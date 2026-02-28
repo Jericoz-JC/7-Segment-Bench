@@ -43,11 +43,15 @@ Primary use case: test how each pipeline holds up across different datasets and 
   - Error gallery (mispredictions).
   - CSV/JSON benchmark export.
 - Quick test mode:
-  - Upload a single image.
-  - Optional ROI draw.
-  - Run selected pipelines and inspect debug images.
+  - Batch mode: select a dataset and run a random 10-50 labeled-image sample.
+  - Single-image mode: upload one image with optional ROI for deep debug.
+  - Batch quick tests persist as normal benchmark runs and open in Results.
 - API key storage for online models:
-  - Store active provider key (`anthropic` or `openai`) via API routes.
+  - Store active provider key (`anthropic`, `openai`, `openrouter`, `ollama`) via API routes.
+  - `ollama` supports key-optional local use.
+- In-app YOLO trainer for `p06`:
+  - Launch train/val split export + training job from labeled datasets.
+  - Activate a trained checkpoint as the default `p06` model.
 
 ## Built-in Pipelines (7 Total)
 
@@ -60,8 +64,8 @@ All pipelines are auto-registered from `pipelines/__init__.py`.
 | `p03_hsv_color` | HSV Color Filter | HSV mask (red/green/blue) + glare rejection + segment map | No | No | `num_digits`, `color` | Best when segment color is known and stable. |
 | `p04_template_matching` | Template Matching | Synthetic template generation + NCC matching | No | No | `num_digits`, `template_height`, `template_width` | Useful non-learning baseline with explicit shape matching. |
 | `p05_tesseract_ocr` | Tesseract OCR | OCR with digit whitelist | No | No | `target_height`, `psm`, `tessdata`, `lang` | Requires local Tesseract runtime; sensitive to font and preprocessing. |
-| `p06_yolo_nano` | YOLOv8 Nano | Detection model (digit classes) | No | Yes | `model_path`, `ncnn_path` | Trainable path; default fallback `yolov8n.pt` is generic and not digit-specialized. |
-| `p07_llm_vision` | LLM Vision API | Zero-shot image-to-digits (Claude/GPT-4o style) | Yes | No | `provider`, `api_key`, `model` | Requires network + API key; useful as external baseline. |
+| `p06_yolo_nano` | YOLOv8 Nano | Detection model (digit classes) | No | Yes | `model_path`, `ncnn_path` | Supports trained model activation via YOLO Training Lab; fallback `yolov8n.pt` remains available. |
+| `p07_llm_vision` | LLM Vision API | Zero-shot image-to-digits (Claude/GPT-4o/OpenRouter/Ollama style) | Yes | No | `provider`, `api_key`, `model` | Supports `anthropic`, `openai`, `openrouter`, and local `ollama` providers. |
 
 ### How Each Pipeline Works (Mechanics)
 
@@ -79,6 +83,53 @@ All pipelines are auto-registered from `pipelines/__init__.py`.
   - ROI crop -> YOLO inference -> collect detection boxes/classes/confidence -> sort left-to-right -> concatenate class digits.
 - `p07_llm_vision`:
   - ROI crop -> JPEG base64 -> provider API prompt -> parse digit sequence from returned text.
+
+## Quick Test Lab
+
+Quick Test now has two flows in one page:
+
+- **Dataset Batch**:
+  - choose a labeled dataset
+  - choose sample size (10-50)
+  - select pipelines
+  - run and stream progress
+  - open persisted run in Results
+- **Single-Image Debug**:
+  - upload image
+  - optional ROI draw
+  - run selected pipelines and inspect debug images
+
+Batch runs use a random subset and are saved as `BenchmarkRun` records.
+
+## YOLO Training Lab (`p06`)
+
+Use **YOLO Train** in the sidebar to train and activate a `p06` model from app datasets.
+
+Training workflow:
+
+1. Select one labeled dataset.
+2. Configure training settings:
+   - `epochs`
+   - `imgsz`
+   - `batch`
+   - `val_ratio`
+   - optional `device`
+3. Start training (background job).
+4. Monitor status in the UI.
+5. Activate a trained model.
+
+Activated models are stored in `trained_models` and automatically used by `p06` when no explicit `model_path` is passed.
+
+## Provider Key API
+
+`POST /api/keys`
+
+- `provider`: one of `anthropic`, `openai`, `openrouter`, `ollama`
+- `key_value`:
+  - required for `anthropic` / `openai` / `openrouter`
+  - optional for `ollama` (local endpoint flow)
+
+`GET /api/keys` lists stored providers and active states.
 
 ## End-to-End Workflow
 
@@ -150,6 +201,7 @@ No benchmark is started automatically after import. This keeps testers in contro
 | upload  |        | benchmark |         | p01..p07  |      | + JS/CSS  |
 | label   |        | metrics   |         | registry  |      | frontend  |
 | bench   |        | image IO  |         | base API  |      | UI views  |
+| train   |        | yolo jobs |         |           |      |           |
 | results |        | label I/O |         +-----+-----+      +-----------+
 | export  |        | yolo prep |               |
 +----+----+        +-----+-----+               |
@@ -160,6 +212,7 @@ No benchmark is started automatically after import. This keeps testers in contro
                    | SQLAlchemy Models          |
                    | Dataset/Image/Label        |
                    | BenchmarkRun/Result/ApiKey |
+                   | TrainedModel               |
                    +-----+----------------------+
                          |
                    +-----v----------------------+
@@ -385,8 +438,8 @@ python -m pytest -q tests
 
 Result:
 
-- `29 passed`
-- `2 warnings` (SQLAlchemy `Query.get()` legacy warning)
+- `50 passed`
+- `6 warnings` (legacy SQLAlchemy `Query.get()` + environment-specific pytest cache warnings)
 
 ### Unit/Integration Coverage Matrix
 
@@ -399,10 +452,10 @@ Result:
 | Pipeline `p04_template_matching` | Yes | Clean synthetic case. |
 | Metrics utility | Yes | Character accuracy scenarios and length mismatch. |
 | ROI dataclass behaviors | Yes | Crop/full-image/from-dict tests. |
-| Flask route integration | Yes | Dashboard, upload, label, benchmark, results, single-test, API keys, export labels. |
-| Pipeline `p05_tesseract_ocr` | No dedicated unit test | Validate manually with local Tesseract installed. |
-| Pipeline `p06_yolo_nano` | No dedicated unit test | Validate with a digit-trained model checkpoint. |
-| Pipeline `p07_llm_vision` | No dedicated unit test | Validate with active API key and provider network access. |
+| Flask route integration | Yes | Dashboard, upload, label, benchmark, results, single-test, YOLO train, API keys, export labels. |
+| Pipeline `p05_tesseract_ocr` | Partial | Runtime preflight endpoint + whitelist behavior checks. |
+| Pipeline `p06_yolo_nano` | Partial | Left-to-right detection sorting validation + training/activation route coverage. |
+| Pipeline `p07_llm_vision` | Partial | Provider loading checks for OpenRouter and Ollama. |
 
 ### Per-Pipeline Validation Status
 
@@ -412,23 +465,23 @@ Result:
 | `p02_adaptive_clahe` | Covered | Clean synthetic decoding for a full 4-digit case. |
 | `p03_hsv_color` | Covered | Green LED and red LED decoding paths. |
 | `p04_template_matching` | Covered | Clean synthetic decoding for full display. |
-| `p05_tesseract_ocr` | Not covered | Requires manual runtime validation due external binary/runtime coupling. |
-| `p06_yolo_nano` | Not covered | Requires manual/model-specific validation with trained checkpoint. |
-| `p07_llm_vision` | Not covered | Requires manual validation with external API keys and providers. |
+| `p05_tesseract_ocr` | Partially covered | Runtime preflight and whitelist behavior checks added. |
+| `p06_yolo_nano` | Partially covered | Detection sorting checks added; model quality still needs dataset-specific validation. |
+| `p07_llm_vision` | Partially covered | Provider wiring checks added; end-to-end quality still provider/model dependent. |
 
-### Manual Validation Checklist for Untested Pipelines
+### Required Validation Checklist (`p05` / `p06` / `p07`)
 
 - `p05`:
-  - verify `tesseract --version` works
+  - verify `tesseract --version` works (or call `/api/pipelines/p05/preflight`)
   - run Quick Test with known labels
   - confirm whitelist behavior on mixed symbols
 - `p06`:
-  - provide trained `model_path`
+  - train or provide a valid `model_path`
   - test varying digit counts and spacing
   - inspect left-to-right detection sorting
 - `p07`:
   - set active API key via `/api/keys`
-  - verify both provider paths if used
+  - verify provider paths used in your environment (`anthropic`/`openai`/`openrouter`/`ollama`)
   - test prompt robustness on glare/blur/partial ROI
 
 ## Known Limitations and Practical Notes
@@ -449,7 +502,14 @@ Result:
 - Tesseract pipeline errors:
   - ensure Tesseract binary is installed and accessible in PATH.
 - LLM pipeline key errors:
-  - add active key with provider `anthropic` or `openai` via `/api/keys`.
+  - add active key via `/api/keys` using `anthropic`, `openai`, or `openrouter`.
+  - for local Ollama, use provider `ollama`; key can be empty, and ensure server is reachable at `http://localhost:11434/v1`.
+- OpenRouter connection errors:
+  - confirm key is valid and provider is set to `openrouter`.
+- YOLO training fails immediately:
+  - verify selected dataset has labeled images.
+  - ensure `val_ratio` keeps at least one train and one val sample.
+  - verify checkpoint output path is writable under `data/training/p06_yolo_nano`.
 - Benchmark says no labeled images:
   - ensure labels exist for images in selected dataset.
 - Empty/misaligned predictions:
