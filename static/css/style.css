@@ -878,6 +878,99 @@ kbd {
     border: 1px solid var(--border);
 }
 
+/* === Quick Test + YOLO Train === */
+.quick-lab-hero {
+    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 15% 20%, rgba(240,165,0,0.18), transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(34,211,238,0.12), transparent 42%),
+        linear-gradient(140deg, rgba(17,23,31,0.95), rgba(10,14,23,0.96));
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+.quick-lab-hero-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-heading);
+    letter-spacing: 0.2px;
+}
+
+.quick-lab-hero-subtitle {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    max-width: 840px;
+}
+
+.quick-lab-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.quick-lab-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.quick-lab-card::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    bottom: -20px;
+    width: 120px;
+    height: 120px;
+    border-radius: 100%;
+    background: radial-gradient(circle, rgba(255,255,255,0.08), transparent 65%);
+    pointer-events: none;
+}
+
+.quick-lab-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+}
+
+.quick-lab-summary {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.quick-lab-log {
+    margin-top: 10px;
+    min-height: 190px;
+}
+
+.quick-lab-divider {
+    height: 1px;
+    margin: 16px 0;
+    background: var(--border-subtle);
+}
+
+.yolo-validation-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.yolo-hero {
+    background:
+        radial-gradient(circle at 20% 10%, rgba(52,211,153,0.18), transparent 44%),
+        radial-gradient(circle at 80% 90%, rgba(240,165,0,0.14), transparent 44%),
+        linear-gradient(145deg, rgba(17,23,31,0.95), rgba(10,14,23,0.96));
+}
+
 /* === Responsive === */
 @media (max-width: 900px) {
     .sidebar {
@@ -889,6 +982,7 @@ kbd {
     .nav-links a { padding: 10px; justify-content: center; }
     .content { margin-left: 56px; padding: 18px; }
     .card-grid { grid-template-columns: 1fr; }
+    .quick-lab-grid { grid-template-columns: 1fr; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .labeler-layout { grid-template-columns: 1fr; }
     .labeler-panel { max-height: none; }

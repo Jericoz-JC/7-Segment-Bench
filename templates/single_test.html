@@ -2,162 +2,121 @@
 {% block title %}Quick Test - 7-Seg Bench{% endblock %}
 {% block content %}
 <div class="page-header">
-    <h1>Quick Single-Image Test</h1>
+    <h1>Quick Test Lab</h1>
 </div>
 
-<div class="card-grid">
-    <div class="card">
-        <h2>Upload Test Image</h2>
-        <form id="test-form" class="form-stack">
-            <div class="form-group">
-                <label>Image</label>
-                <div id="test-drop" class="drop-zone">
-                    <p>Drag & drop an image, or click to browse</p>
-                    <input type="file" id="test-file" accept="image/*" class="file-input">
+<div class="quick-lab-hero">
+    <div class="quick-lab-hero-title">Fast Validation Rail</div>
+    <div class="quick-lab-hero-subtitle">
+        Configure a 10-50 image dataset sample for smoke checks, then drill into single-image debug traces.
+    </div>
+</div>
+
+<div class="quick-lab-grid">
+    <section class="card quick-lab-card">
+        <h2>Dataset Batch</h2>
+        <form id="batch-test-form" class="form-stack">
+            <div class="quick-lab-row">
+                <div class="form-group">
+                    <label for="batch-dataset">Main Dataset</label>
+                    <select id="batch-dataset" required>
+                        <option value="">Select labeled dataset...</option>
+                        {% for ds in datasets %}
+                        <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.labeled_count }} labeled)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="batch-size">Sample Size</label>
+                    <input type="number" id="batch-size" min="10" max="50" value="20" required>
                 </div>
             </div>
+
             <div class="form-group">
-                <label>ROI (optional — draw on preview below)</label>
-                <canvas id="test-canvas" style="display:none"></canvas>
-                <input type="hidden" id="test-roi">
+                <label for="batch-name">Run Name (optional)</label>
+                <input type="text" id="batch-name" placeholder="Quick batch run">
             </div>
+
             <div class="form-group">
                 <label>Pipelines</label>
                 <div class="pipeline-checkboxes">
                     {% for p in pipelines %}
                     <label class="checkbox-label">
-                        <input type="checkbox" name="pipelines" value="{{ p.slug }}" checked>
-                        {{ p.name }}
+                        <input type="checkbox" name="batch_pipelines" value="{{ p.slug }}" checked>
+                        <span class="pipeline-name">{{ p.name }}</span>
+                        {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
+                        {% if p.is_trainable %}<span class="tag tag-train">Trainable</span>{% endif %}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if not datasets %}
+            <div class="form-msg error">
+                No labeled datasets found. Upload + label images first.
+            </div>
+            {% endif %}
+
+            <button type="submit" class="btn btn-primary" id="batch-start-btn" {% if not datasets %}disabled{% endif %}>
+                Start Batch Quick Test
+            </button>
+        </form>
+    </section>
+
+    <section class="card quick-lab-card">
+        <h2>Live Batch Progress</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar"><div class="progress-fill" id="quick-batch-fill"></div></div>
+            <span id="quick-batch-pct">0%</span>
+        </div>
+        <div id="quick-batch-summary" class="quick-lab-summary">No active run.</div>
+        <div id="quick-batch-log" class="bench-log quick-lab-log"></div>
+    </section>
+</div>
+
+<div class="quick-lab-grid">
+    <section class="card quick-lab-card">
+        <h2>Single-Image Deep Debug</h2>
+        <form id="single-test-form" class="form-stack">
+            <div class="form-group">
+                <label>Image</label>
+                <div id="test-drop" class="drop-zone">
+                    <p>Drag and drop image, or click to browse</p>
+                    <input type="file" id="test-file" accept="image/*" class="file-input">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>ROI (optional - drag on preview)</label>
+                <canvas id="test-canvas" style="display:none"></canvas>
+                <input type="hidden" id="test-roi">
+            </div>
+
+            <div class="form-group">
+                <label>Pipelines</label>
+                <div class="pipeline-checkboxes">
+                    {% for p in pipelines %}
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="single_pipelines" value="{{ p.slug }}" checked>
+                        <span class="pipeline-name">{{ p.name }}</span>
                         {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
                     </label>
                     {% endfor %}
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary" id="test-btn" disabled>Run All Pipelines</button>
+            <button type="submit" class="btn btn-primary" id="single-test-btn" disabled>
+                Run Single Image
+            </button>
         </form>
-    </div>
+    </section>
 
-    <div class="card" id="test-results" style="display:none">
-        <h2>Results</h2>
-        <div id="results-grid" class="results-grid"></div>
-    </div>
+    <section class="card quick-lab-card" id="single-results-panel" style="display:none">
+        <h2>Single-Image Results</h2>
+        <div id="single-results-grid" class="results-grid"></div>
+    </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-const testDrop = document.getElementById('test-drop');
-const testFile = document.getElementById('test-file');
-const testCanvas = document.getElementById('test-canvas');
-const testBtn = document.getElementById('test-btn');
-let testImage = null;
-let testROI = null;
-
-// ROI drawing state
-let drawing = false, startX, startY;
-
-testDrop.addEventListener('click', () => testFile.click());
-testDrop.addEventListener('dragover', e => { e.preventDefault(); testDrop.classList.add('dragover'); });
-testDrop.addEventListener('dragleave', () => testDrop.classList.remove('dragover'));
-testDrop.addEventListener('drop', e => {
-    e.preventDefault();
-    testDrop.classList.remove('dragover');
-    if (e.dataTransfer.files.length) loadTestImage(e.dataTransfer.files[0]);
-});
-testFile.addEventListener('change', e => { if (e.target.files.length) loadTestImage(e.target.files[0]); });
-
-function loadTestImage(file) {
-    testImage = file;
-    testBtn.disabled = false;
-    testCanvas.style.display = 'block';
-    const img = new Image();
-    img.onload = () => {
-        const maxW = testCanvas.parentElement.clientWidth - 20;
-        const scale = Math.min(1, maxW / img.width);
-        testCanvas.width = img.width * scale;
-        testCanvas.height = img.height * scale;
-        testCanvas._scale = scale;
-        testCanvas._img = img;
-        const ctx = testCanvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, testCanvas.width, testCanvas.height);
-    };
-    img.src = URL.createObjectURL(file);
-}
-
-testCanvas.addEventListener('mousedown', e => {
-    drawing = true;
-    const r = testCanvas.getBoundingClientRect();
-    startX = e.clientX - r.left;
-    startY = e.clientY - r.top;
-});
-testCanvas.addEventListener('mousemove', e => {
-    if (!drawing) return;
-    const r = testCanvas.getBoundingClientRect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    const ctx = testCanvas.getContext('2d');
-    ctx.drawImage(testCanvas._img, 0, 0, testCanvas.width, testCanvas.height);
-    ctx.strokeStyle = '#00ff88';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(startX, startY, x - startX, y - startY);
-});
-testCanvas.addEventListener('mouseup', e => {
-    drawing = false;
-    const r = testCanvas.getBoundingClientRect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    const s = testCanvas._scale;
-    testROI = {
-        x: Math.round(Math.min(startX, x) / s),
-        y: Math.round(Math.min(startY, y) / s),
-        width: Math.round(Math.abs(x - startX) / s),
-        height: Math.round(Math.abs(y - startY) / s)
-    };
-    document.getElementById('test-roi').value = JSON.stringify(testROI);
-});
-
-document.getElementById('test-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!testImage) return;
-    testBtn.disabled = true;
-    testBtn.textContent = 'Running...';
-
-    const form = new FormData();
-    form.append('image', testImage);
-    if (testROI) form.append('roi', JSON.stringify(testROI));
-    document.querySelectorAll('input[name="pipelines"]:checked').forEach(cb => {
-        form.append('pipelines', cb.value);
-    });
-
-    const resp = await fetch('/test/run', { method: 'POST', body: form });
-    const data = await resp.json();
-
-    const grid = document.getElementById('results-grid');
-    grid.innerHTML = '';
-    document.getElementById('test-results').style.display = 'block';
-
-    for (const [slug, result] of Object.entries(data)) {
-        const card = document.createElement('div');
-        card.className = 'result-card';
-        let debugHtml = '';
-        if (result.debug_images) {
-            for (const [name, b64] of Object.entries(result.debug_images)) {
-                debugHtml += `<div class="debug-img"><img src="data:image/png;base64,${b64}" alt="${name}"><span>${name}</span></div>`;
-            }
-        }
-        card.innerHTML = `
-            <h3>${slug}</h3>
-            <div class="result-predicted">${result.predicted || '(none)'}</div>
-            <div class="result-meta">
-                <span>Latency: ${result.latency_ms} ms</span>
-                <span>Confidence: ${(result.confidence * 100).toFixed(1)}%</span>
-            </div>
-            ${result.error ? `<div class="error-msg">${result.error}</div>` : ''}
-            ${debugHtml ? `<div class="debug-images">${debugHtml}</div>` : ''}
-        `;
-        grid.appendChild(card);
-    }
-
-    testBtn.disabled = false;
-    testBtn.textContent = 'Run All Pipelines';
-});
-</script>
+<script src="{{ url_for('static', filename='js/quick_test.js') }}"></script>
 {% endblock %}

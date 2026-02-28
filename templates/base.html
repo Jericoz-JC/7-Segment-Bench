@@ -33,6 +33,9 @@
             <li><a href="{{ url_for('single_test.index') }}" class="{% if request.blueprint == 'single_test' %}active{% endif %}">
                 <span class="nav-icon">&#9654;</span> Quick Test
             </a></li>
+            <li><a href="{{ url_for('train_yolo.index') }}" class="{% if request.blueprint == 'train_yolo' %}active{% endif %}">
+                <span class="nav-icon">&#9889;</span> YOLO Train
+            </a></li>
         </ul>
     </nav>
 

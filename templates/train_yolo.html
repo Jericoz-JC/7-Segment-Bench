@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}YOLO Trainer - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>YOLO Training Lab</h1>
+</div>
+
+<div class="quick-lab-hero yolo-hero">
+    <div class="quick-lab-hero-title">Train p06 From Labeled Datasets</div>
+    <div class="quick-lab-hero-subtitle">
+        Export train/val splits, launch background training, and activate a model for inference in one flow.
+    </div>
+</div>
+
+<div class="quick-lab-grid">
+    <section class="card quick-lab-card">
+        <h2>Training Config</h2>
+        <form id="yolo-train-form" class="form-stack">
+            <div class="form-group">
+                <label for="train-dataset">Dataset</label>
+                <select id="train-dataset" required>
+                    <option value="">Select labeled dataset...</option>
+                    {% for ds in datasets %}
+                    <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.labeled_count }} labeled)</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="quick-lab-row">
+                <div class="form-group">
+                    <label for="train-epochs">Epochs</label>
+                    <input type="number" id="train-epochs" min="1" max="500" value="30" required>
+                </div>
+                <div class="form-group">
+                    <label for="train-imgsz">Image Size</label>
+                    <input type="number" id="train-imgsz" min="128" max="2048" value="640" required>
+                </div>
+            </div>
+
+            <div class="quick-lab-row">
+                <div class="form-group">
+                    <label for="train-batch">Batch</label>
+                    <input type="number" id="train-batch" min="1" max="128" value="8" required>
+                </div>
+                <div class="form-group">
+                    <label for="train-val-ratio">Val Ratio</label>
+                    <input type="number" id="train-val-ratio" min="0.05" max="0.95" step="0.05" value="0.2" required>
+                </div>
+            </div>
+
+            <div class="quick-lab-row">
+                <div class="form-group">
+                    <label for="train-seed">Seed</label>
+                    <input type="number" id="train-seed" value="42" required>
+                </div>
+                <div class="form-group">
+                    <label for="train-device">Device (optional)</label>
+                    <input type="text" id="train-device" placeholder="cpu, 0, cuda:0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="train-run-name">Run Name (optional)</label>
+                <input type="text" id="train-run-name" placeholder="auto-generated if blank">
+            </div>
+
+            {% if not datasets %}
+            <div class="form-msg error">Need labeled datasets before training.</div>
+            {% endif %}
+
+            <button type="submit" class="btn btn-primary" id="yolo-train-btn" {% if not datasets %}disabled{% endif %}>
+                Start YOLO Training
+            </button>
+        </form>
+    </section>
+
+    <section class="card quick-lab-card">
+        <h2>Training Status</h2>
+        <div id="yolo-train-status" class="quick-lab-summary">No active training job.</div>
+        <div id="yolo-train-log" class="bench-log quick-lab-log"></div>
+
+        <div class="quick-lab-divider"></div>
+        <h2>Validation Checks</h2>
+        <div class="yolo-validation-row">
+            <button type="button" class="btn" id="check-tesseract-btn">Check p05 Tesseract Runtime</button>
+            <span id="check-tesseract-result" class="status status-pending">not run</span>
+        </div>
+    </section>
+</div>
+
+<div class="card">
+    <h2>Trained p06 Models</h2>
+    {% if models %}
+    <table class="data-table" id="trained-models-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Dataset</th>
+                <th>Path</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in models %}
+            <tr data-model-id="{{ m.id }}">
+                <td>{{ m.name }}</td>
+                <td>{{ m.dataset_id }}</td>
+                <td><code>{{ m.model_path }}</code></td>
+                <td>
+                    {% if m.is_active %}
+                    <span class="status status-completed">active</span>
+                    {% else %}
+                    <span class="status status-pending">inactive</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not m.is_active %}
+                    <button class="btn btn-sm activate-model-btn" data-model-id="{{ m.id }}">Activate</button>
+                    {% else %}
+                    <span class="tag">Current</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No trained models yet. Start a YOLO run above.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/yolo_train.js') }}"></script>
+{% endblock %}
