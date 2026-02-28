@@ -1,10 +1,19 @@
-import os
 import base64
+import random
+from datetime import datetime, timezone
+
 import cv2
 import numpy as np
-from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import Blueprint, render_template, request, jsonify
+
 import pipelines
+from models import db
+from models.benchmark import BenchmarkRun
+from models.dataset import Dataset
+from models.image import Image
+from models.label import Label
 from pipelines.base import ROI
+from routes.benchmark import launch_runner
 
 bp = Blueprint('single_test', __name__)
 
@@ -12,7 +21,13 @@ bp = Blueprint('single_test', __name__)
 @bp.route('/')
 def index():
     available = pipelines.list_pipelines()
-    return render_template('single_test.html', pipelines=available)
+    datasets = Dataset.query.order_by(Dataset.created_at.desc()).all()
+    labeled_datasets = [d for d in datasets if d.labeled_count > 0]
+    return render_template(
+        'single_test.html',
+        pipelines=available,
+        datasets=labeled_datasets,
+    )
 
 
 @bp.route('/run', methods=['POST'])
@@ -65,7 +80,99 @@ def run_test():
                 'debug_images': debug_b64,
             }
         except Exception as e:
-            results[slug] = {'predicted': '', 'error': str(e), 'latency_ms': 0,
-                             'confidence': 0, 'debug_images': {}}
+            results[slug] = {
+                'predicted': '',
+                'error': str(e),
+                'latency_ms': 0,
+                'confidence': 0,
+                'debug_images': {},
+            }
 
     return jsonify(results)
+
+
+@bp.route('/run-batch', methods=['POST'])
+def run_batch_test():
+    """Run selected pipelines on a sampled labeled subset and persist as BenchmarkRun."""
+    data = request.get_json() or {}
+
+    dataset_id = data.get('dataset_id')
+    pipeline_slugs = data.get('pipeline_slugs', [])
+    sample_size = data.get('sample_size', 20)
+    run_name = str(data.get('name', '')).strip()
+    pipeline_configs = data.get('pipeline_configs', {})
+
+    try:
+        dataset_id = int(dataset_id)
+    except Exception:
+        return jsonify({'error': 'dataset_id is required'}), 400
+
+    try:
+        sample_size = int(sample_size)
+    except Exception:
+        return jsonify({'error': 'sample_size must be an integer'}), 400
+
+    if sample_size < 10 or sample_size > 50:
+        return jsonify({'error': 'sample_size must be between 10 and 50'}), 400
+
+    if not isinstance(pipeline_slugs, list) or not pipeline_slugs:
+        return jsonify({'error': 'pipeline_slugs must be a non-empty list'}), 400
+
+    valid_slugs = {p['slug'] for p in pipelines.list_pipelines()}
+    unknown = [s for s in pipeline_slugs if s not in valid_slugs]
+    if unknown:
+        return jsonify({'error': f'Unknown pipeline slug(s): {unknown}'}), 400
+
+    if not isinstance(pipeline_configs, dict):
+        return jsonify({'error': 'pipeline_configs must be an object'}), 400
+
+    dataset = Dataset.query.get_or_404(dataset_id)
+
+    rows = (
+        db.session.query(Image.id)
+        .join(Label)
+        .filter(Image.dataset_id == dataset.id)
+        .distinct()
+        .all()
+    )
+    labeled_image_ids = [r[0] for r in rows]
+    if not labeled_image_ids:
+        return jsonify({'error': 'Selected dataset has no labeled images'}), 400
+
+    selected_count = min(sample_size, len(labeled_image_ids))
+    if len(labeled_image_ids) > selected_count:
+        selected_image_ids = random.sample(labeled_image_ids, selected_count)
+    else:
+        selected_image_ids = list(labeled_image_ids)
+
+    if not run_name:
+        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        run_name = f'Quick Batch {dataset.name} {ts}'
+
+    run = BenchmarkRun(
+        name=run_name,
+        dataset_id=dataset.id,
+        status='pending',
+    )
+    run.pipeline_slugs = pipeline_slugs
+
+    merged_configs = dict(pipeline_configs)
+    merged_configs['__selection'] = {
+        'image_ids': selected_image_ids,
+        'mode': 'quick_batch',
+        'sample_size': sample_size,
+        'selected_count': selected_count,
+        'strategy': 'random',
+    }
+    run.pipeline_configs = merged_configs
+
+    db.session.add(run)
+    db.session.commit()
+
+    launch_runner(run.id)
+
+    return jsonify({
+        'run_id': run.id,
+        'selected_count': selected_count,
+        'selected_image_ids': selected_image_ids,
+    })

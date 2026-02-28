@@ -7,8 +7,16 @@ import pipelines
 
 bp = Blueprint('benchmark', __name__)
 
-# Global runner reference for SSE
-_runner: BenchmarkRunner | None = None
+# Global runners for SSE by run_id
+_runners: dict[int, BenchmarkRunner] = {}
+
+
+def launch_runner(run_id: int) -> BenchmarkRunner:
+    """Create and start a benchmark runner for a run id."""
+    runner = BenchmarkRunner(run_id)
+    _runners[run_id] = runner
+    runner.start()
+    return runner
 
 
 @bp.route('/')
@@ -22,7 +30,6 @@ def index():
 
 @bp.route('/start', methods=['POST'])
 def start_benchmark():
-    global _runner
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     pipeline_slugs = data.get('pipeline_slugs', [])
@@ -43,8 +50,7 @@ def start_benchmark():
     db.session.add(run)
     db.session.commit()
 
-    _runner = BenchmarkRunner(run.id)
-    _runner.start()
+    launch_runner(run.id)
 
     return jsonify({'run_id': run.id})
 
@@ -58,9 +64,9 @@ def progress(run_id):
             yield f'data: {{"error": "Run not found"}}\n\n'
             return
 
-        global _runner
-        if _runner and _runner.run_id == run_id:
-            for event in _runner.events():
+        runner = _runners.get(run_id)
+        if runner and runner.run_id == run_id:
+            for event in runner.events():
                 yield f'data: {event}\n\n'
         else:
             yield f'data: {{"status": "{run.status}", "processed": {run.processed}, "total": {run.total}}}\n\n'

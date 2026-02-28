@@ -38,6 +38,7 @@ def create_app(config_name: str | None = None) -> Flask:
     from routes.single_test import bp as single_test_bp
     from routes.export import bp as export_bp
     from routes.api import bp as api_bp
+    from routes.train_yolo import bp as train_yolo_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(upload_bp, url_prefix='/upload')
@@ -45,6 +46,7 @@ def create_app(config_name: str | None = None) -> Flask:
     app.register_blueprint(benchmark_bp, url_prefix='/benchmark')
     app.register_blueprint(results_bp, url_prefix='/results')
     app.register_blueprint(single_test_bp, url_prefix='/test')
+    app.register_blueprint(train_yolo_bp, url_prefix='/train/yolo')
     app.register_blueprint(export_bp, url_prefix='/export')
     app.register_blueprint(api_bp, url_prefix='/api')
 

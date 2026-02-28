@@ -51,13 +51,30 @@ class BenchmarkRunner:
                 self._queue.put(None)
                 return
 
+            selection = run.pipeline_configs.get('__selection', {})
+            selected_image_ids = []
+            if isinstance(selection, dict):
+                raw_ids = selection.get('image_ids', [])
+                if isinstance(raw_ids, list):
+                    for item in raw_ids:
+                        try:
+                            selected_image_ids.append(int(item))
+                        except Exception:
+                            pass
+
             # Get labeled images from dataset
-            labeled_images = (
+            query = (
                 db.session.query(Image, Label)
                 .join(Label)
                 .filter(Image.dataset_id == run.dataset_id)
-                .all()
             )
+            if selected_image_ids:
+                query = query.filter(Image.id.in_(selected_image_ids))
+
+            labeled_images = query.all()
+            if selected_image_ids:
+                order = {img_id: i for i, img_id in enumerate(selected_image_ids)}
+                labeled_images.sort(key=lambda row: order.get(row[0].id, len(order)))
 
             if not labeled_images:
                 run.status = 'failed'

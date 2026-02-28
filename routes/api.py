@@ -3,6 +3,7 @@ from models import db
 from models.benchmark import ApiKey
 
 bp = Blueprint('api', __name__)
+SUPPORTED_PROVIDERS = ('anthropic', 'openai', 'openrouter', 'ollama')
 
 
 @bp.route('/keys', methods=['GET'])
@@ -18,13 +19,14 @@ def list_keys():
 
 @bp.route('/keys', methods=['POST'])
 def add_key():
-    data = request.get_json()
-    provider = data.get('provider', '').strip()
-    key_value = data.get('key_value', '').strip()
+    data = request.get_json() or {}
+    provider = str(data.get('provider', '')).strip().lower()
+    key_value = str(data.get('key_value', '')).strip()
 
-    if provider not in ('anthropic', 'openai'):
-        return jsonify({'error': 'Provider must be anthropic or openai'}), 400
-    if not key_value:
+    if provider not in SUPPORTED_PROVIDERS:
+        options = ', '.join(SUPPORTED_PROVIDERS)
+        return jsonify({'error': f'Provider must be one of: {options}'}), 400
+    if provider != 'ollama' and not key_value:
         return jsonify({'error': 'API key required'}), 400
 
     # Deactivate existing keys for this provider
@@ -42,3 +44,9 @@ def delete_key(key_id):
     db.session.delete(key)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@bp.route('/pipelines/p05/preflight', methods=['GET'])
+def p05_preflight():
+    from services.pipeline_validation import get_tesseract_version_info
+    return jsonify(get_tesseract_version_info())

@@ -30,6 +30,21 @@ def _extract_digits(text: str) -> str:
     return ''
 
 
+def _extract_openai_text(content) -> str:
+    """Normalize OpenAI-style message content to plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                txt = item.get('text')
+                if txt:
+                    parts.append(str(txt))
+        return ''.join(parts)
+    return str(content or '')
+
+
 @register
 class LLMVisionPipeline(BasePipeline):
     name = 'LLM Vision API'
@@ -37,17 +52,33 @@ class LLMVisionPipeline(BasePipeline):
     description = 'Claude or GPT-4o vision; zero-shot digit reading'
     is_online = True
     is_trainable = False
+    _supported_providers = ('anthropic', 'openai', 'openrouter', 'ollama')
 
     def __init__(self, config=None):
         super().__init__(config)
         self._client = None
         self._provider = None
 
+    def _default_model(self, provider: str) -> str:
+        defaults = {
+            'anthropic': 'claude-sonnet-4-20250514',
+            'openai': 'gpt-4o',
+            'openrouter': 'openrouter/auto',
+            'ollama': 'llava',
+        }
+        return defaults.get(provider, 'gpt-4o')
+
     def load(self):
         super().load()
         # Try to get API key from config or DB
-        provider = self.config.get('provider', 'anthropic')
-        api_key = self.config.get('api_key', '')
+        provider = str(self.config.get('provider', 'anthropic')).strip().lower()
+        if provider not in self._supported_providers:
+            raise ValueError(
+                f'Unknown provider: {provider}. '
+                f'Choose one of {list(self._supported_providers)}'
+            )
+
+        api_key = str(self.config.get('api_key', '')).strip()
 
         if not api_key:
             # Try loading from database
@@ -59,11 +90,11 @@ class LLMVisionPipeline(BasePipeline):
                         provider=provider, is_active=True
                     ).first()
                     if key_record:
-                        api_key = key_record.key_value
+                            api_key = key_record.key_value
             except Exception:
                 pass
 
-        if not api_key:
+        if provider != 'ollama' and not api_key:
             raise ValueError(f'No API key configured for {provider}. '
                              f'Add one via Settings or pass in pipeline config.')
 
@@ -74,6 +105,19 @@ class LLMVisionPipeline(BasePipeline):
         elif provider == 'openai':
             import openai
             self._client = openai.OpenAI(api_key=api_key)
+        elif provider == 'openrouter':
+            import openai
+            self._client = openai.OpenAI(
+                api_key=api_key,
+                base_url='https://openrouter.ai/api/v1',
+            )
+        elif provider == 'ollama':
+            import openai
+            ollama_base_url = str(self.config.get('base_url', 'http://localhost:11434/v1')).strip()
+            self._client = openai.OpenAI(
+                api_key=api_key or 'ollama-local',
+                base_url=ollama_base_url,
+            )
         else:
             raise ValueError(f'Unknown provider: {provider}')
 
@@ -98,7 +142,7 @@ class LLMVisionPipeline(BasePipeline):
         try:
             if self._provider == 'anthropic':
                 response = self._client.messages.create(
-                    model=self.config.get('model', 'claude-sonnet-4-20250514'),
+                    model=self.config.get('model', self._default_model(self._provider)),
                     max_tokens=50,
                     messages=[{
                         'role': 'user',
@@ -116,9 +160,9 @@ class LLMVisionPipeline(BasePipeline):
                     }]
                 )
                 text = response.content[0].text
-            else:  # openai
+            else:  # OpenAI-compatible providers: openai/openrouter/ollama
                 response = self._client.chat.completions.create(
-                    model=self.config.get('model', 'gpt-4o'),
+                    model=self.config.get('model', self._default_model(self._provider)),
                     max_tokens=50,
                     messages=[{
                         'role': 'user',
@@ -133,7 +177,7 @@ class LLMVisionPipeline(BasePipeline):
                         ]
                     }]
                 )
-                text = response.choices[0].message.content
+                text = _extract_openai_text(response.choices[0].message.content)
 
             predicted = _extract_digits(text)
             return PipelineResult(

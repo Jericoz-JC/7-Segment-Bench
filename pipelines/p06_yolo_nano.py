@@ -1,14 +1,55 @@
-"""Pipeline 6: YOLOv8n detection — each digit 0-9 as a class.
+"""Pipeline 6: YOLOv8n detection - each digit 0-9 as a class.
 
 Uses NCNN export on Pi (ARM64), PyTorch on Windows/x86.
 """
 
+import os
 import platform
+
 import cv2
 import numpy as np
+
 from pipelines import register
 from pipelines.base import BasePipeline, PipelineResult, ROI
 from pipelines.preprocessing import crop_roi
+
+
+def _to_scalar(value):
+    """Convert torch/numpy scalar-like values to Python float."""
+    if hasattr(value, 'cpu'):
+        value = value.cpu()
+    if hasattr(value, 'numpy'):
+        value = value.numpy()
+    if isinstance(value, np.ndarray):
+        if value.size == 0:
+            return 0.0
+        return float(value.reshape(-1)[0])
+    try:
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _decode_detections(boxes):
+    """Decode YOLO boxes into left-to-right ordered detections."""
+    detections = []
+    if boxes is None:
+        return detections
+
+    for i in range(len(boxes)):
+        xyxy = boxes.xyxy[i]
+        if hasattr(xyxy, 'cpu'):
+            xyxy = xyxy.cpu()
+        if hasattr(xyxy, 'numpy'):
+            xyxy = xyxy.numpy()
+        x1, y1, x2, y2 = [float(v) for v in np.asarray(xyxy).reshape(-1)[:4]]
+        cls_id = int(_to_scalar(boxes.cls[i]))
+        conf = _to_scalar(boxes.conf[i])
+        cx = (x1 + x2) / 2
+        detections.append((cx, cls_id, conf, (x1, y1, x2, y2)))
+
+    detections.sort(key=lambda d: d[0])
+    return detections
 
 
 @register
@@ -27,7 +68,24 @@ class YOLONanoPipeline(BasePipeline):
         super().load()
         from ultralytics import YOLO
 
-        model_path = self.config.get('model_path', '')
+        model_path = str(self.config.get('model_path', '')).strip()
+        if not model_path:
+            # Try active trained model from DB first.
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    from models.benchmark import TrainedModel
+                    active = (
+                        TrainedModel.query
+                        .filter_by(pipeline_slug=self.slug, is_active=True)
+                        .order_by(TrainedModel.created_at.desc())
+                        .first()
+                    )
+                    if active and active.model_path and os.path.exists(active.model_path):
+                        model_path = active.model_path
+            except Exception:
+                pass
+
         if not model_path:
             # Use pretrained yolov8n as fallback (won't know digits,
             # but allows pipeline to run)
@@ -35,7 +93,7 @@ class YOLONanoPipeline(BasePipeline):
 
         # On Pi, try NCNN format
         is_arm = platform.machine().startswith(('aarch64', 'arm'))
-        ncnn_path = self.config.get('ncnn_path', '')
+        ncnn_path = str(self.config.get('ncnn_path', '')).strip()
         if is_arm and ncnn_path:
             model_path = ncnn_path
 
@@ -67,16 +125,9 @@ class YOLONanoPipeline(BasePipeline):
         if boxes is None or len(boxes) == 0:
             return PipelineResult(predicted='', confidence=0.0, debug_images=debug)
 
-        # Sort detections left-to-right by x coordinate
-        detections = []
-        for i in range(len(boxes)):
-            x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy()
-            cls_id = int(boxes.cls[i].cpu().numpy())
-            conf = float(boxes.conf[i].cpu().numpy())
-            cx = (x1 + x2) / 2
-            detections.append((cx, cls_id, conf, (x1, y1, x2, y2)))
-
-        detections.sort(key=lambda d: d[0])
+        detections = _decode_detections(boxes)
+        if not detections:
+            return PipelineResult(predicted='', confidence=0.0, debug_images=debug)
 
         predicted = ''.join(str(d[1]) for d in detections)
         avg_conf = sum(d[2] for d in detections) / len(detections)
@@ -85,8 +136,15 @@ class YOLONanoPipeline(BasePipeline):
         annotated = cropped.copy()
         for cx, cls_id, conf, (x1, y1, x2, y2) in detections:
             cv2.rectangle(annotated, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            cv2.putText(annotated, f'{cls_id}:{conf:.2f}', (int(x1), int(y1) - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.putText(
+                annotated,
+                f'{cls_id}:{conf:.2f}',
+                (int(x1), int(y1) - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+            )
         debug['detections'] = annotated
 
         return PipelineResult(
