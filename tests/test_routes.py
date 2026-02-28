@@ -39,6 +39,22 @@ class TestUpload:
         resp = client.get('/upload/')
         assert resp.status_code == 200
         assert b'Upload' in resp.data
+        assert b'Curated External Datasets' in resp.data
+        assert b'Quick Add' in resp.data
+
+    def test_external_dataset_catalog_endpoint(self, client):
+        resp = client.get('/upload/external-datasets')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert isinstance(data, list)
+        keys = {item['key'] for item in data}
+        assert 'hf_7seg_ocr' in keys
+        assert 'mendeley_fnn44p4mj8' in keys
+        assert 'roboflow_seven_segment_digits' in keys
+        first = data[0]
+        assert 'install_allowed' in first
+        assert 'install_reason' in first
+        assert 'requires_modules' in first
 
     def test_create_dataset(self, client):
         resp = client.post('/upload/dataset', data={
@@ -55,6 +71,99 @@ class TestUpload:
         client.post('/upload/dataset', data={'name': 'dup'})
         resp = client.post('/upload/dataset', data={'name': 'dup'})
         assert resp.status_code == 400
+
+    def test_external_dataset_install_rejects_unknown_key(self, client):
+        resp = client.post('/upload/external-datasets/install', json={
+            'dataset_key': 'does-not-exist',
+            'mode': 'quick',
+        })
+        assert resp.status_code == 400
+        assert 'Unknown dataset key' in resp.get_json()['error']
+
+    def test_external_dataset_install_rejects_invalid_mode(self, client):
+        resp = client.post('/upload/external-datasets/install', json={
+            'dataset_key': 'hf_7seg_ocr',
+            'mode': 'invalid',
+        })
+        assert resp.status_code == 400
+        assert "mode must be either 'quick' or 'full'" in resp.get_json()['error']
+
+    def test_external_dataset_install_requires_roboflow_key(self, client, monkeypatch):
+        monkeypatch.delenv('ROBOFLOW_API_KEY', raising=False)
+        resp = client.post('/upload/external-datasets/install', json={
+            'dataset_key': 'roboflow_seven_segment_digits',
+            'mode': 'quick',
+        })
+        assert resp.status_code == 400
+        assert 'ROBOFLOW_API_KEY' in resp.get_json()['error']
+
+    def test_external_dataset_install_requires_hf_package(self, client, monkeypatch):
+        import services.external_dataset_catalog as catalog
+
+        real_find_spec = catalog.importlib.util.find_spec
+
+        def fake_find_spec(name):
+            if name == 'datasets':
+                return None
+            return real_find_spec(name)
+
+        monkeypatch.setattr(catalog.importlib.util, 'find_spec', fake_find_spec)
+        resp = client.post('/upload/external-datasets/install', json={
+            'dataset_key': 'hf_7seg_ocr',
+            'mode': 'quick',
+        })
+        assert resp.status_code == 400
+        assert "Python package 'datasets' is required" in resp.get_json()['error']
+
+    def test_external_dataset_install_starts_job(self, client, monkeypatch):
+        import routes.upload as upload_routes
+
+        captured = {}
+
+        def fake_start_install(app_obj, dataset_key, mode):
+            captured['dataset_key'] = dataset_key
+            captured['mode'] = mode
+            return 'job_test_123'
+
+        monkeypatch.setattr(upload_routes._install_manager, 'start_install', fake_start_install)
+
+        resp = client.post('/upload/external-datasets/install', json={
+            'dataset_key': 'hf_7seg_ocr',
+            'mode': 'quick',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['job_id'] == 'job_test_123'
+        assert captured['dataset_key'] == 'hf_7seg_ocr'
+        assert captured['mode'] == 'quick'
+
+    def test_external_dataset_status_not_found(self, client):
+        resp = client.get('/upload/external-datasets/status/not-a-job')
+        assert resp.status_code == 404
+
+    def test_external_dataset_status_success(self, client, monkeypatch):
+        import routes.upload as upload_routes
+
+        payload = {
+            'job_id': 'job_test_456',
+            'dataset_key': 'hf_7seg_ocr',
+            'mode': 'quick',
+            'status': 'running',
+            'phase': 'import',
+            'processed': 10,
+            'total': 100,
+            'progress_pct': 10.0,
+            'message': 'Importing 10/100 images',
+            'result': None,
+            'error': '',
+        }
+
+        monkeypatch.setattr(upload_routes._install_manager, 'get_status', lambda job_id: payload)
+        resp = client.get('/upload/external-datasets/status/job_test_456')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['job_id'] == 'job_test_456'
+        assert data['status'] == 'running'
 
 
 class TestLabel:

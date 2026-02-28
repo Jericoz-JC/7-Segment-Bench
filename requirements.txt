@@ -10,4 +10,6 @@ anthropic>=0.39
 openai>=1.0
 requests>=2.31
 PyYAML>=6.0
+datasets>=4.0
+roboflow>=1.2
 pytest>=7.0

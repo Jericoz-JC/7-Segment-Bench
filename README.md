@@ -1,12 +1,12 @@
 # seven-segment-bench
 
-A Flask-based research platform for benchmarking multiple computer-vision and OCR approaches on 7-segment display readings.
+A Flask app for comparing multiple computer-vision and OCR approaches on 7-segment display readings.
 
-It is designed for side-by-side evaluation of classic CV, template methods, OCR, object detection, and LLM vision under a common dataset/labeling/metrics workflow.
+It lets you run classic CV, template methods, OCR, object detection, and LLM vision side-by-side with one shared dataset/labeling/metrics workflow.
 
 ## What This Project Does
 
-`seven-segment-bench` helps a research team:
+`seven-segment-bench` helps you:
 
 - build labeled datasets of display images with ROI ground truth
 - run multiple pipelines on the same labeled set
@@ -14,7 +14,7 @@ It is designed for side-by-side evaluation of classic CV, template methods, OCR,
 - inspect error cases and confusion trends
 - export results for downstream analysis
 
-Primary use case: test generalization across heterogeneous datasets and imaging conditions (lighting, glare, angle, blur, color, display type).
+Primary use case: test how each pipeline holds up across different datasets and image conditions (lighting, glare, angle, blur, color, display type).
 
 ## Core Features
 
@@ -98,6 +98,38 @@ All pipelines are auto-registered from `pipelines/__init__.py`.
    - inspect confusion matrix and error gallery
 7. Export run outputs (`CSV` or `JSON`) for further analysis.
 8. Repeat across additional datasets to test cross-domain generalization.
+
+## Quick Dataset Installs (Upload Page)
+
+The Upload page includes a **Curated External Datasets** card so testers can import ready-to-use datasets without manual conversion.
+
+- `Quick Add`: installs a starter subset for fast smoke testing.
+- `Full Add`: installs the full dataset when available.
+- Imports run in a background job and show live status in the Upload UI.
+- Imports create a new dataset in the app with images and labels ready for Benchmark.
+
+### Curated Datasets
+
+| Key | Source | Access | Local raw cache |
+|---|---|---|---|
+| `hf_7seg_ocr` | https://huggingface.co/datasets/HelloImMrGrey/7SEG_OCR | Open | `external_datasets/staging/hf_7seg_ocr_images` |
+| `mendeley_fnn44p4mj8` | https://data.mendeley.com/datasets/fnn44p4mj8/1 | Open | `external_datasets/mendeley_fnn44p4mj8_v1` |
+| `roboflow_seven_segment_digits` | https://universe.roboflow.com/charlie-srmko/seven-segment-digits-uptcy | Requires `ROBOFLOW_API_KEY` | `external_datasets/roboflow_seven_segment_digits` |
+| `roboflow_seven_segment_display_ocr` | https://universe.roboflow.com/fyp-zodww/seven-segment-display-ocr-lguqw | Requires `ROBOFLOW_API_KEY` | `external_datasets/roboflow_seven_segment_display_ocr` |
+
+Set Roboflow key when needed:
+
+```powershell
+$env:ROBOFLOW_API_KEY = "your_key_here"
+```
+
+If a dataset button shows a dependency warning, install missing packages:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+No benchmark is started automatically after import. This keeps testers in control of which pipelines to run.
 
 ## Architecture Deep Dive
 
@@ -457,4 +489,4 @@ seven-segment-bench/
 4. Expand test suite:
    - add dedicated unit/integration tests for `p05`, `p06`, `p07`.
 5. Reproducibility package:
-   - pin dataset versions, pipeline configs, and export scripts for paper-ready experiments.
+   - pin dataset versions, pipeline configs, and export scripts so repeated runs stay consistent.

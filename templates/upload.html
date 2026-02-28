@@ -48,7 +48,7 @@
             <div class="form-group">
                 <label>Images</label>
                 <div id="drop-zone" class="drop-zone">
-                    <p>Drag & drop images here, or click to browse</p>
+                    <p><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Drag & drop images here, or click to browse</p>
                     <input type="file" id="file-input" name="files" multiple accept="image/*" class="file-input">
                 </div>
             </div>
@@ -61,6 +61,54 @@
         </div>
         <div id="upload-results"></div>
     </div>
+
+    <div class="card external-datasets-card">
+        <h2>Curated External Datasets</h2>
+        <p class="card-subtext">
+            Quick Add installs a starter pack. Full Add installs everything available.
+        </p>
+        <div id="external-dataset-list" class="external-dataset-list">
+            {% for item in external_datasets %}
+            {% set blocked = not item.install_allowed %}
+            {% set full_disabled = blocked or not item.supports_full %}
+            <div class="external-dataset-item" data-dataset-key="{{ item.key }}">
+                <div class="external-dataset-header">
+                    <div class="external-dataset-name">{{ item.name }}</div>
+                    <div class="external-dataset-tags">
+                        <span class="tag">{{ item.license }}</span>
+                        <span class="tag">{{ item.access }}</span>
+                    </div>
+                </div>
+                <div class="external-dataset-notes">{{ item.notes }}</div>
+                <div class="external-dataset-meta">
+                    <span>Quick: {{ item.quick_count }} samples</span>
+                    <span>Raw cache: <code>{{ item.raw_cache_dir }}</code></span>
+                </div>
+                <div class="external-dataset-footer">
+                    <div class="external-status" id="status-{{ item.key }}">
+                        {% if blocked %}
+                        {{ item.install_reason }}
+                        {% elif item.installed_raw %}
+                        Raw cache detected
+                        {% else %}
+                        Ready
+                        {% endif %}
+                    </div>
+                    <div class="external-dataset-actions">
+                        <a class="btn btn-sm" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">Open Source</a>
+                        <button type="button" class="btn btn-sm btn-primary ext-install-btn" data-mode="quick" {% if blocked %}disabled{% endif %}>
+                            Quick Add
+                        </button>
+                        <button type="button" class="btn btn-sm ext-install-btn" data-mode="full" {% if full_disabled %}disabled{% endif %}>
+                            Full Add
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div id="external-dataset-msg" class="form-msg" style="display:none"></div>
+    </div>
 </div>
 {% endblock %}
 
@@ -70,7 +118,9 @@ const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const fileList = document.getElementById('file-list');
 const uploadBtn = document.getElementById('upload-btn');
+const externalMsg = document.getElementById('external-dataset-msg');
 let selectedFiles = [];
+const jobPollers = new Map();
 
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -134,6 +184,109 @@ document.getElementById('upload-form').addEventListener('submit', async e => {
     selectedFiles = [];
     fileList.innerHTML = '';
     uploadBtn.disabled = true;
+});
+
+function showExternalMessage(message, type = 'success') {
+    externalMsg.style.display = 'block';
+    externalMsg.textContent = message;
+    externalMsg.className = `form-msg ${type}`;
+}
+
+function setDatasetActionState(datasetKey, disabled) {
+    const row = document.querySelector(`.external-dataset-item[data-dataset-key="${datasetKey}"]`);
+    if (!row) return;
+    row.querySelectorAll('.ext-install-btn').forEach(btn => {
+        btn.disabled = disabled;
+    });
+}
+
+function upsertDatasetOption(result) {
+    if (!result || !result.dataset_id || !result.dataset_name) return;
+    const select = document.getElementById('upload-dataset');
+    const existing = Array.from(select.options).find(opt => String(opt.value) === String(result.dataset_id));
+    const label = `${result.dataset_name} (${result.uploaded_images || 0} imgs)`;
+    if (existing) {
+        existing.text = label;
+    } else {
+        select.add(new Option(label, result.dataset_id));
+    }
+    select.value = result.dataset_id;
+}
+
+function startPollingInstall(datasetKey, jobId) {
+    const statusEl = document.getElementById(`status-${datasetKey}`);
+    if (!statusEl) return;
+
+    const poller = setInterval(async () => {
+        try {
+            const resp = await fetch(`/upload/external-datasets/status/${jobId}`);
+            if (!resp.ok) {
+                clearInterval(poller);
+                setDatasetActionState(datasetKey, false);
+                statusEl.textContent = 'Status unavailable';
+                showExternalMessage('Install status endpoint failed.', 'error');
+                return;
+            }
+            const data = await resp.json();
+            const countText = data.total > 0 ? ` (${data.processed}/${data.total})` : '';
+            statusEl.textContent = `${data.message}${countText}`;
+
+            if (data.status === 'completed') {
+                clearInterval(poller);
+                setDatasetActionState(datasetKey, false);
+                statusEl.textContent = 'Installed';
+                upsertDatasetOption(data.result || {});
+                const result = data.result || {};
+                showExternalMessage(`Installed ${result.dataset_name} with ${result.uploaded_images || 0} images and ${result.labels_imported || 0} labels.`, 'success');
+            } else if (data.status === 'failed') {
+                clearInterval(poller);
+                setDatasetActionState(datasetKey, false);
+                statusEl.textContent = 'Failed';
+                showExternalMessage(data.error || 'Dataset install failed.', 'error');
+            }
+        } catch (err) {
+            clearInterval(poller);
+            setDatasetActionState(datasetKey, false);
+            statusEl.textContent = 'Failed';
+            showExternalMessage('Dataset install request failed.', 'error');
+        }
+    }, 2000);
+
+    jobPollers.set(jobId, poller);
+}
+
+document.querySelectorAll('.ext-install-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+        const row = e.target.closest('.external-dataset-item');
+        if (!row) return;
+        const datasetKey = row.dataset.datasetKey;
+        const mode = e.target.dataset.mode;
+        const statusEl = document.getElementById(`status-${datasetKey}`);
+
+        setDatasetActionState(datasetKey, true);
+        statusEl.textContent = 'Starting install...';
+
+        try {
+            const resp = await fetch('/upload/external-datasets/install', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataset_key: datasetKey, mode }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.error) {
+                setDatasetActionState(datasetKey, false);
+                statusEl.textContent = 'Install blocked';
+                showExternalMessage(data.error || 'Unable to start install.', 'error');
+                return;
+            }
+            statusEl.textContent = `Running ${mode} install...`;
+            startPollingInstall(datasetKey, data.job_id);
+        } catch (err) {
+            setDatasetActionState(datasetKey, false);
+            statusEl.textContent = 'Failed';
+            showExternalMessage('Could not start dataset install.', 'error');
+        }
+    });
 });
 </script>
 {% endblock %}
