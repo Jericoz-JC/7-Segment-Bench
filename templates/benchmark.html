@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Benchmark - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Run Benchmark</h1>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h2>Configure Benchmark</h2>
+        <form id="bench-form" class="form-stack">
+            <div class="form-group">
+                <label for="bench-name">Run Name</label>
+                <input type="text" id="bench-name" value="Benchmark {{ recent_runs|length + 1 }}" required>
+            </div>
+            <div class="form-group">
+                <label for="bench-dataset">Dataset</label>
+                <select id="bench-dataset" required>
+                    <option value="">Select dataset...</option>
+                    {% for ds in datasets %}
+                    <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.labeled_count }} labeled)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Pipelines</label>
+                <div class="pipeline-checkboxes">
+                    {% for p in pipelines %}
+                    <label class="checkbox-label pipeline-color-{{ p.slug }}">
+                        <input type="checkbox" name="pipelines" value="{{ p.slug }}" checked>
+                        <span class="pipeline-name">{{ p.name }}</span>
+                        {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
+                        {% if p.is_trainable %}<span class="tag tag-train">Trainable</span>{% endif %}
+                        <span class="pipeline-desc">{{ p.description }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="start-btn">Start Benchmark</button>
+        </form>
+    </div>
+
+    <div class="card" id="progress-card" style="display:none">
+        <h2>Progress</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar"><div class="progress-fill" id="bench-fill"></div></div>
+            <span id="bench-pct">0%</span>
+        </div>
+        <div id="bench-log" class="bench-log"></div>
+    </div>
+
+    <div class="card">
+        <h2>Recent Runs</h2>
+        {% if recent_runs %}
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Status</th><th>Progress</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for run in recent_runs %}
+            <tr>
+                <td>{{ run.name }}</td>
+                <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
+                <td>{{ run.processed }}/{{ run.total }}</td>
+                <td>
+                    {% if run.status == 'completed' %}
+                    <a href="{{ url_for('results.view_run', run_id=run.id) }}" class="btn btn-sm">View</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No benchmark runs yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/benchmark.js') }}"></script>
+{% endblock %}

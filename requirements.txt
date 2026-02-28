@@ -1,0 +1,13 @@
+Flask>=3.0
+Flask-SQLAlchemy>=3.1
+Pillow>=10.0
+opencv-python-headless>=4.8
+numpy>=1.24
+scikit-image>=0.21
+pytesseract>=0.3.10
+ultralytics>=8.1
+anthropic>=0.39
+openai>=1.0
+requests>=2.31
+PyYAML>=6.0
+pytest>=7.0

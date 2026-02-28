@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Results - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Benchmark Results</h1>
+</div>
+
+<div class="card">
+    {% if runs %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Dataset</th>
+                <th>Pipelines</th>
+                <th>Images</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for run in runs %}
+        <tr>
+            <td><a href="{{ url_for('results.view_run', run_id=run.id) }}">{{ run.name }}</a></td>
+            <td>{{ run.dataset.name }}</td>
+            <td>{{ run.pipeline_slugs|length }}</td>
+            <td>{{ run.total }}</td>
+            <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                <a href="{{ url_for('results.view_run', run_id=run.id) }}" class="btn btn-sm">View</a>
+                <a href="{{ url_for('export.export_csv', run_id=run.id) }}" class="btn btn-sm">CSV</a>
+                <a href="{{ url_for('export.export_json', run_id=run.id) }}" class="btn btn-sm">JSON</a>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No completed benchmark runs yet. <a href="{{ url_for('benchmark.index') }}">Run a benchmark</a> first.</p>
+    {% endif %}
+</div>
+{% endblock %}

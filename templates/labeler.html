@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Label: {{ dataset.name }} - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Label: {{ dataset.name }}</h1>
+    <div class="header-actions">
+        <span id="img-counter" class="counter">1 / {{ images|length }}</span>
+        <a href="{{ url_for('export.export_labels', dataset_id=dataset.id) }}" class="btn btn-sm">Export Labels</a>
+    </div>
+</div>
+
+<div class="labeler-layout">
+    <div class="labeler-canvas-wrap">
+        <canvas id="labeler-canvas"></canvas>
+        <div class="labeler-instructions">
+            Click and drag to draw ROI. Press <kbd>Enter</kbd> to save label.
+            <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to navigate. <kbd>Delete</kbd> to remove label.
+        </div>
+    </div>
+
+    <div class="labeler-panel">
+        <div class="form-group">
+            <label for="gt-input">Ground Truth Digits</label>
+            <input type="text" id="gt-input" placeholder="e.g. 0237" pattern="[0-9]*" class="gt-input">
+        </div>
+        <div class="form-group">
+            <label for="display-type">Display Type</label>
+            <select id="display-type">
+                <option value="led">LED</option>
+                <option value="lcd">LCD</option>
+            </select>
+        </div>
+        <div class="labeler-actions">
+            <button id="save-btn" class="btn btn-primary">Save Label</button>
+            <button id="delete-btn" class="btn btn-danger">Delete Label</button>
+        </div>
+        <div id="label-msg" class="form-msg"></div>
+
+        <div class="label-info" id="label-info"></div>
+
+        <h3>Image List</h3>
+        <div class="image-thumbnail-list" id="thumb-list">
+            {% for img in images %}
+            <div class="thumb-item" data-index="{{ loop.index0 }}"
+                 data-id="{{ img.id }}"
+                 data-src="/data/uploads/{{ img.filepath }}"
+                 data-thumb="/data/thumbnails/{{ img.thumbnail_path }}"
+                 data-width="{{ img.width }}" data-height="{{ img.height }}">
+                <img src="/data/thumbnails/{{ img.thumbnail_path }}" alt="{{ img.filename }}">
+                <span class="thumb-label">{{ img.filename }}</span>
+                <span class="thumb-status" id="status-{{ img.id }}"></span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/labeler.js') }}"></script>
+{% endblock %}

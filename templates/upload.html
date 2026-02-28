@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Upload - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Upload Images</h1>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h2>Create Dataset</h2>
+        <form id="dataset-form" class="form-stack">
+            <div class="form-group">
+                <label for="ds-name">Dataset Name</label>
+                <input type="text" id="ds-name" name="name" required placeholder="e.g. lab_bright_led">
+            </div>
+            <div class="form-group">
+                <label for="ds-desc">Description</label>
+                <input type="text" id="ds-desc" name="description" placeholder="Optional description">
+            </div>
+            <div class="form-group">
+                <label for="ds-tag">Lighting Tag</label>
+                <select id="ds-tag" name="lighting_tag">
+                    <option value="">None</option>
+                    <option value="bright">Bright</option>
+                    <option value="dim">Dim</option>
+                    <option value="glare">Glare</option>
+                    <option value="mixed">Mixed</option>
+                    <option value="outdoor">Outdoor</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Dataset</button>
+        </form>
+        <div id="dataset-msg" class="form-msg"></div>
+    </div>
+
+    <div class="card">
+        <h2>Upload Images</h2>
+        <form id="upload-form" class="form-stack">
+            <div class="form-group">
+                <label for="upload-dataset">Dataset</label>
+                <select id="upload-dataset" name="dataset_id" required>
+                    <option value="">Select dataset...</option>
+                    {% for ds in datasets %}
+                    <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.image_count }} imgs)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Images</label>
+                <div id="drop-zone" class="drop-zone">
+                    <p>Drag & drop images here, or click to browse</p>
+                    <input type="file" id="file-input" name="files" multiple accept="image/*" class="file-input">
+                </div>
+            </div>
+            <div id="file-list" class="file-list"></div>
+            <button type="submit" class="btn btn-primary" id="upload-btn" disabled>Upload</button>
+        </form>
+        <div id="upload-progress" class="progress-bar-container" style="display:none">
+            <div class="progress-bar"><div class="progress-fill" id="upload-fill"></div></div>
+            <span id="upload-status"></span>
+        </div>
+        <div id="upload-results"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileList = document.getElementById('file-list');
+const uploadBtn = document.getElementById('upload-btn');
+let selectedFiles = [];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+    selectedFiles = Array.from(files);
+    fileList.innerHTML = selectedFiles.map(f => `<div class="file-item">${f.name} (${(f.size/1024).toFixed(1)} KB)</div>`).join('');
+    uploadBtn.disabled = selectedFiles.length === 0;
+}
+
+document.getElementById('dataset-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const resp = await fetch('/upload/dataset', { method: 'POST', body: form });
+    const data = await resp.json();
+    const msg = document.getElementById('dataset-msg');
+    if (data.error) {
+        msg.textContent = data.error;
+        msg.className = 'form-msg error';
+    } else {
+        msg.textContent = `Created: ${data.name}`;
+        msg.className = 'form-msg success';
+        const sel = document.getElementById('upload-dataset');
+        const opt = new Option(`${data.name} (0 imgs)`, data.id);
+        sel.add(opt);
+        sel.value = data.id;
+        e.target.reset();
+    }
+});
+
+document.getElementById('upload-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const datasetId = document.getElementById('upload-dataset').value;
+    if (!datasetId || selectedFiles.length === 0) return;
+
+    const form = new FormData();
+    form.append('dataset_id', datasetId);
+    selectedFiles.forEach(f => form.append('files', f));
+
+    const prog = document.getElementById('upload-progress');
+    prog.style.display = 'block';
+    document.getElementById('upload-status').textContent = 'Uploading...';
+
+    const resp = await fetch('/upload/images', { method: 'POST', body: form });
+    const data = await resp.json();
+
+    const results = document.getElementById('upload-results');
+    if (data.uploaded) {
+        const ok = data.uploaded.filter(r => !r.error).length;
+        const fail = data.uploaded.filter(r => r.error).length;
+        results.innerHTML = `<div class="form-msg success">${ok} uploaded${fail ? `, ${fail} failed` : ''}</div>`;
+    }
+    prog.style.display = 'none';
+    selectedFiles = [];
+    fileList.innerHTML = '';
+    uploadBtn.disabled = true;
+});
+</script>
+{% endblock %}

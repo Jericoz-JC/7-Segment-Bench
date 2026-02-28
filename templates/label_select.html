@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Label - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Label Images</h1>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h2>Select Dataset</h2>
+        {% if datasets %}
+        <div class="dataset-list">
+            {% for ds in datasets %}
+            <a href="{{ url_for('label.label_dataset', dataset_id=ds.id) }}" class="dataset-card">
+                <div class="dataset-name">{{ ds.name }}</div>
+                <div class="dataset-meta">
+                    <span>{{ ds.image_count }} images</span>
+                    <span>{{ ds.labeled_count }} labeled</span>
+                    {% if ds.lighting_tag %}<span class="tag">{{ ds.lighting_tag }}</span>{% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">No datasets yet. <a href="{{ url_for('upload.index') }}">Upload images</a> first.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Import Labels</h2>
+        <form id="import-form" class="form-stack">
+            <div class="form-group">
+                <label for="import-dataset">Dataset</label>
+                <select id="import-dataset" name="dataset_id" required>
+                    <option value="">Select dataset...</option>
+                    {% for ds in datasets %}
+                    <option value="{{ ds.id }}">{{ ds.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>CSV or JSON file</label>
+                <input type="file" name="file" accept=".csv,.json" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Import</button>
+        </form>
+        <div id="import-msg" class="form-msg"></div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('import-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const resp = await fetch('/label/import', { method: 'POST', body: form });
+    const data = await resp.json();
+    const msg = document.getElementById('import-msg');
+    if (data.error) {
+        msg.textContent = data.error;
+        msg.className = 'form-msg error';
+    } else {
+        msg.textContent = `Imported ${data.imported} labels`;
+        msg.className = 'form-msg success';
+    }
+});
+</script>
+{% endblock %}

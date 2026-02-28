@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.datasets }}</div>
+        <div class="stat-label">Datasets</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.images }}</div>
+        <div class="stat-label">Images</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.labels }}</div>
+        <div class="stat-label">Labels</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.runs }}</div>
+        <div class="stat-label">Benchmark Runs</div>
+    </div>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h2>Datasets</h2>
+        {% if datasets %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Name</th><th>Images</th><th>Labeled</th><th>Tag</th></tr>
+            </thead>
+            <tbody>
+            {% for ds in datasets %}
+                <tr>
+                    <td>{{ ds.name }}</td>
+                    <td>{{ ds.image_count }}</td>
+                    <td>{{ ds.labeled_count }}</td>
+                    <td><span class="tag">{{ ds.lighting_tag or '—' }}</span></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No datasets yet. <a href="{{ url_for('upload.index') }}">Upload images</a> to get started.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Recent Benchmarks</h2>
+        {% if recent_runs %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Name</th><th>Status</th><th>Progress</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+            {% for run in recent_runs %}
+                <tr>
+                    <td>
+                        {% if run.status == 'completed' %}
+                        <a href="{{ url_for('results.view_run', run_id=run.id) }}">{{ run.name }}</a>
+                        {% else %}
+                        {{ run.name }}
+                        {% endif %}
+                    </td>
+                    <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
+                    <td>{{ run.processed }}/{{ run.total }}</td>
+                    <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No benchmarks yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

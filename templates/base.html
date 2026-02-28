@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}7-Segment Bench{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <span class="brand-icon">8</span>
+            <span class="brand-text">7-Seg Bench</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a></li>
+            <li><a href="{{ url_for('upload.index') }}" class="{% if request.blueprint == 'upload' %}active{% endif %}">
+                <span class="nav-icon">&#8679;</span> Upload
+            </a></li>
+            <li><a href="{{ url_for('label.index') }}" class="{% if request.blueprint == 'label' %}active{% endif %}">
+                <span class="nav-icon">&#9998;</span> Label
+            </a></li>
+            <li><a href="{{ url_for('benchmark.index') }}" class="{% if request.blueprint == 'benchmark' %}active{% endif %}">
+                <span class="nav-icon">&#9881;</span> Benchmark
+            </a></li>
+            <li><a href="{{ url_for('results.index') }}" class="{% if request.blueprint == 'results' %}active{% endif %}">
+                <span class="nav-icon">&#9776;</span> Results
+            </a></li>
+            <li><a href="{{ url_for('single_test.index') }}" class="{% if request.blueprint == 'single_test' %}active{% endif %}">
+                <span class="nav-icon">&#9654;</span> Quick Test
+            </a></li>
+        </ul>
+    </nav>
+
+    <main class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

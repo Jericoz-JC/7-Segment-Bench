@@ -1,0 +1,16 @@
+# Pi 5 (aarch64) dependencies
+# Install OpenCV from system packages (apt) for ARM optimization
+# pip install these:
+Flask>=3.0
+Flask-SQLAlchemy>=3.1
+Pillow>=10.0
+numpy>=1.24
+scikit-image>=0.21
+pytesseract>=0.3.10
+ultralytics>=8.1
+# NCNN runtime (build from source or use pre-built wheel)
+# opencv-python is installed via apt as python3-opencv
+# For LLM pipelines (optional on Pi):
+# anthropic>=0.39
+# openai>=1.0
+PyYAML>=6.0

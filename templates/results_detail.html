@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Results: {{ run.name }} - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ run.name }}</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('export.export_csv', run_id=run.id) }}" class="btn btn-sm">Export CSV</a>
+        <a href="{{ url_for('export.export_json', run_id=run.id) }}" class="btn btn-sm">Export JSON</a>
+        <a href="{{ url_for('results.run_errors', run_id=run.id) }}" class="btn btn-sm">Error Gallery</a>
+    </div>
+</div>
+
+<!-- Summary table -->
+<div class="card">
+    <h2>Pipeline Comparison</h2>
+    <div class="table-scroll">
+    <table class="data-table comparison-table">
+        <thead>
+            <tr>
+                <th>Pipeline</th>
+                <th>String Acc %</th>
+                <th>Char Acc %</th>
+                <th>Latency (mean)</th>
+                <th>Latency (p95)</th>
+                <th>Errors</th>
+                <th>Correct/Total</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for slug in metrics.pipeline_slugs %}
+        {% set m = metrics.pipelines[slug] %}
+        <tr>
+            <td class="pipeline-name">{{ slug }}</td>
+            <td class="metric-cell {% if m.string_accuracy >= 90 %}metric-good{% elif m.string_accuracy >= 70 %}metric-ok{% else %}metric-bad{% endif %}">
+                {{ m.string_accuracy }}%
+            </td>
+            <td class="metric-cell {% if m.char_accuracy >= 95 %}metric-good{% elif m.char_accuracy >= 80 %}metric-ok{% else %}metric-bad{% endif %}">
+                {{ m.char_accuracy }}%
+            </td>
+            <td>{{ m.latency_mean }} ms</td>
+            <td>{{ m.latency_p95 }} ms</td>
+            <td>{{ m.errors }}</td>
+            <td>{{ m.correct }}/{{ m.valid }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="card-grid">
+    <div class="card">
+        <h2>Accuracy Comparison</h2>
+        <canvas id="accuracy-chart"></canvas>
+    </div>
+    <div class="card">
+        <h2>Latency Comparison</h2>
+        <canvas id="latency-chart"></canvas>
+    </div>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h2>Accuracy vs Latency</h2>
+        <canvas id="scatter-chart"></canvas>
+    </div>
+    <div class="card">
+        <h2>Confusion Matrix</h2>
+        <div class="form-group">
+            <select id="confusion-pipeline">
+                {% for slug in metrics.pipeline_slugs %}
+                <option value="{{ slug }}">{{ slug }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <canvas id="confusion-chart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const metricsData = {{ metrics|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

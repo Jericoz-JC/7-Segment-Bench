@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Errors: {{ run.name }} - 7-Seg Bench{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Error Gallery: {{ run.name }}</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('results.view_run', run_id=run.id) }}" class="btn btn-sm">Back to Results</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="form-group">
+        <label>Filter by pipeline:</label>
+        <select id="pipeline-filter" onchange="location.href='?pipeline='+this.value">
+            <option value="">All pipelines</option>
+            {% for slug in run.pipeline_slugs %}
+            <option value="{{ slug }}" {% if slug == pipeline_slug %}selected{% endif %}>{{ slug }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {% if errors %}
+    <div class="error-grid">
+        {% for err in errors %}
+        <div class="error-card">
+            <img src="/data/thumbnails/{{ err.image.thumbnail_path }}" alt="Error image">
+            <div class="error-info">
+                <div><strong>Pipeline:</strong> {{ err.pipeline_slug }}</div>
+                <div><strong>Predicted:</strong> <span class="predicted">{{ err.predicted or '(empty)' }}</span></div>
+                <div><strong>Ground Truth:</strong> <span class="ground-truth">{{ err.ground_truth }}</span></div>
+                {% if err.error_message %}<div class="error-msg">{{ err.error_message }}</div>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No errors found{% if pipeline_slug %} for {{ pipeline_slug }}{% endif %}.</p>
+    {% endif %}
+</div>
+{% endblock %}
