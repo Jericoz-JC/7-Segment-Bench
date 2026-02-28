@@ -125,6 +125,7 @@ class TestUpload:
             captured['mode'] = mode
             return 'job_test_123'
 
+        monkeypatch.setattr(upload_routes, 'validate_install_request', lambda dataset_key, mode: None)
         monkeypatch.setattr(upload_routes._install_manager, 'start_install', fake_start_install)
 
         resp = client.post('/upload/external-datasets/install', json={
@@ -213,6 +214,71 @@ class TestSingleTest:
         resp = client.get('/test/')
         assert resp.status_code == 200
 
+    def test_run_batch_rejects_invalid_sample_size(self, client):
+        resp = client.post('/test/run-batch', json={
+            'dataset_id': 1,
+            'pipeline_slugs': ['p01_global_threshold'],
+            'sample_size': 5,
+        })
+        assert resp.status_code == 400
+        assert 'sample_size must be between 10 and 50' in resp.get_json()['error']
+
+    def test_run_batch_starts_run(self, client, monkeypatch):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.label import Label
+        import routes.single_test as single_test_routes
+
+        with client.application.app_context():
+            ds = Dataset(name='batch_ds')
+            db.session.add(ds)
+            db.session.commit()
+
+            for i in range(3):
+                img = Image(
+                    dataset_id=ds.id,
+                    filename=f'i{i}.png',
+                    filepath=f'i{i}.png',
+                    width=200,
+                    height=80,
+                )
+                db.session.add(img)
+                db.session.commit()
+                lbl = Label(
+                    image_id=img.id,
+                    roi_x=0,
+                    roi_y=0,
+                    roi_width=200,
+                    roi_height=80,
+                    ground_truth='1234',
+                    num_digits=4,
+                )
+                db.session.add(lbl)
+                db.session.commit()
+
+            ds_id = ds.id
+
+        captured = {}
+
+        def fake_launch(run_id):
+            captured['run_id'] = run_id
+            return None
+
+        monkeypatch.setattr(single_test_routes, 'launch_runner', fake_launch)
+
+        resp = client.post('/test/run-batch', json={
+            'dataset_id': ds_id,
+            'pipeline_slugs': ['p01_global_threshold'],
+            'sample_size': 10,
+            'name': 'quick_batch_test',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'run_id' in data
+        assert data['selected_count'] == 3
+        assert len(data['selected_image_ids']) == 3
+        assert captured['run_id'] == data['run_id']
+
 
 class TestAPI:
     def test_list_keys(self, client):
@@ -236,6 +302,32 @@ class TestAPI:
         })
         assert resp.status_code == 400
 
+    def test_add_openrouter_key(self, client):
+        resp = client.post('/api/keys', json={
+            'provider': 'openrouter',
+            'key_value': 'or-test-123456',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['provider'] == 'openrouter'
+
+    def test_add_ollama_without_key(self, client):
+        resp = client.post('/api/keys', json={
+            'provider': 'ollama',
+            'key_value': '',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['provider'] == 'ollama'
+
+    def test_p05_preflight_endpoint(self, client):
+        resp = client.get('/api/pipelines/p05/preflight')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'ok' in data
+        assert 'version' in data
+        assert 'error' in data
+
 
 class TestExport:
     def test_export_labels_empty(self, client):
@@ -248,3 +340,89 @@ class TestExport:
         resp = client.get(f'/export/labels/{ds_id}')
         assert resp.status_code == 200
         assert resp.get_json() == []
+
+
+class TestYoloTrainRoutes:
+    def test_train_page(self, client):
+        resp = client.get('/train/yolo/')
+        assert resp.status_code == 200
+        assert b'YOLO Training Lab' in resp.data
+
+    def test_train_status_not_found(self, client):
+        resp = client.get('/train/yolo/status/not-a-job')
+        assert resp.status_code == 404
+
+    def test_train_start_starts_job(self, client, monkeypatch):
+        import routes.train_yolo as train_routes
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.label import Label
+
+        with client.application.app_context():
+            ds = Dataset(name='train_ds')
+            db.session.add(ds)
+            db.session.commit()
+
+            for i in range(2):
+                img = Image(
+                    dataset_id=ds.id,
+                    filename=f'train{i}.png',
+                    filepath=f'train{i}.png',
+                    width=240,
+                    height=90,
+                )
+                db.session.add(img)
+                db.session.commit()
+                lbl = Label(
+                    image_id=img.id,
+                    roi_x=0,
+                    roi_y=0,
+                    roi_width=240,
+                    roi_height=90,
+                    ground_truth='1234',
+                    num_digits=4,
+                )
+                db.session.add(lbl)
+                db.session.commit()
+            ds_id = ds.id
+
+        monkeypatch.setattr(
+            train_routes._train_manager,
+            'start_training',
+            lambda app_obj, dataset_id, params: 'job_train_1',
+        )
+
+        resp = client.post('/train/yolo/start', json={
+            'dataset_id': ds_id,
+            'epochs': 5,
+            'imgsz': 320,
+            'batch': 2,
+            'val_ratio': 0.2,
+            'seed': 42,
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['job_id'] == 'job_train_1'
+
+    def test_activate_model(self, client):
+        from models.dataset import Dataset
+        from models.benchmark import TrainedModel
+
+        with client.application.app_context():
+            ds = Dataset(name='activate_ds')
+            db.session.add(ds)
+            db.session.commit()
+            model = TrainedModel(
+                name='m1',
+                pipeline_slug='p06_yolo_nano',
+                dataset_id=ds.id,
+                model_path='C:/tmp/best.pt',
+                is_active=False,
+            )
+            db.session.add(model)
+            db.session.commit()
+            model_id = model.id
+
+        resp = client.post(f'/train/yolo/models/{model_id}/activate')
+        assert resp.status_code == 200
+        assert resp.get_json()['ok'] is True
