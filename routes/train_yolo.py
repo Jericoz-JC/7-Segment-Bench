@@ -2,7 +2,12 @@ from flask import Blueprint, current_app, render_template, request, jsonify
 
 import pipelines
 from models.dataset import Dataset
-from services.yolo_trainer import activate_trained_model, list_trained_models
+from services.yolo_trainer import (
+    YOLO_BASE_MODELS,
+    activate_trained_model,
+    list_trained_models,
+    recommend_training_params,
+)
 from services.yolo_training_jobs import YoloTrainingJobManager
 
 bp = Blueprint('train_yolo', __name__)
@@ -19,6 +24,7 @@ def index():
         datasets=labeled_datasets,
         models=models,
         pipelines=pipelines.list_pipelines(),
+        yolo_base_models=YOLO_BASE_MODELS,
     )
 
 
@@ -58,7 +64,11 @@ def start():
 
     run_name = str(data.get('run_name', '')).strip()
     device = str(data.get('device', '')).strip()
+    base_model = str(data.get('base_model', 'yolov8s.pt')).strip()
     activate = bool(data.get('activate', True))
+
+    if base_model not in YOLO_BASE_MODELS:
+        return jsonify({'error': f'base_model must be one of: {", ".join(YOLO_BASE_MODELS)}'}), 400
 
     params = {
         'run_name': run_name,
@@ -68,11 +78,42 @@ def start():
         'seed': seed,
         'val_ratio': val_ratio,
         'device': device,
+        'base_model': base_model,
         'activate': activate,
     }
 
     job_id = _train_manager.start_training(current_app._get_current_object(), dataset_id, params)
     return jsonify({'job_id': job_id, 'dataset_id': dataset_id})
+
+
+@bp.route('/recommend', methods=['POST'])
+def recommend():
+    data = request.get_json() or {}
+    dataset_id = data.get('dataset_id')
+    if dataset_id is None:
+        return jsonify({'error': 'dataset_id is required'}), 400
+    try:
+        dataset_id = int(dataset_id)
+    except Exception:
+        return jsonify({'error': 'dataset_id must be an integer'}), 400
+
+    base_model = str(data.get('base_model', 'yolov8s.pt')).strip()
+    if base_model not in YOLO_BASE_MODELS:
+        return jsonify({'error': f'base_model must be one of: {", ".join(YOLO_BASE_MODELS)}'}), 400
+
+    device = str(data.get('device', '')).strip()
+    try:
+        payload = recommend_training_params(
+            dataset_id=dataset_id,
+            base_model=base_model,
+            device=device,
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Could not generate recommendations: {exc}'}), 500
+
+    return jsonify(payload)
 
 
 @bp.route('/status/<job_id>')

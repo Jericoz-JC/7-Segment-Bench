@@ -279,6 +279,54 @@ class TestSingleTest:
         assert len(data['selected_image_ids']) == 3
         assert captured['run_id'] == data['run_id']
 
+    def test_run_single_passes_pipeline_configs(self, client, monkeypatch):
+        import json
+        import cv2
+        import numpy as np
+        import routes.single_test as single_test_routes
+        from pipelines.base import PipelineResult
+
+        captured = {}
+
+        class FakePipe:
+            def load(self):
+                pass
+
+            def unload(self):
+                pass
+
+            def predict_timed(self, image, roi):
+                return PipelineResult(predicted='1234', confidence=0.9, latency_ms=1.2)
+
+        def fake_get_pipeline(slug, config=None):
+            captured['slug'] = slug
+            captured['config'] = config
+            return FakePipe()
+
+        monkeypatch.setattr(single_test_routes.pipelines, 'get_pipeline', fake_get_pipeline)
+
+        image = np.zeros((40, 120, 3), dtype=np.uint8)
+        ok, buf = cv2.imencode('.png', image)
+        assert ok is True
+
+        payload = {
+            'image': (io.BytesIO(buf.tobytes()), 'single.png'),
+            'pipelines': 'p07_llm_vision',
+            'pipeline_configs': json.dumps({
+                'p07_llm_vision': {
+                    'provider': 'openrouter',
+                    'model': 'openrouter/auto',
+                }
+            }),
+        }
+        resp = client.post('/test/run', data=payload, content_type='multipart/form-data')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'p07_llm_vision' in data
+        assert captured['slug'] == 'p07_llm_vision'
+        assert captured['config']['provider'] == 'openrouter'
+        assert captured['config']['model'] == 'openrouter/auto'
+
 
 class TestAPI:
     def test_list_keys(self, client):
@@ -386,14 +434,18 @@ class TestYoloTrainRoutes:
                 db.session.commit()
             ds_id = ds.id
 
-        monkeypatch.setattr(
-            train_routes._train_manager,
-            'start_training',
-            lambda app_obj, dataset_id, params: 'job_train_1',
-        )
+        captured = {}
+
+        def fake_start_training(app_obj, dataset_id, params):
+            captured['dataset_id'] = dataset_id
+            captured['params'] = params
+            return 'job_train_1'
+
+        monkeypatch.setattr(train_routes._train_manager, 'start_training', fake_start_training)
 
         resp = client.post('/train/yolo/start', json={
             'dataset_id': ds_id,
+            'base_model': 'yolov8s.pt',
             'epochs': 5,
             'imgsz': 320,
             'batch': 2,
@@ -403,6 +455,92 @@ class TestYoloTrainRoutes:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['job_id'] == 'job_train_1'
+        assert captured['dataset_id'] == ds_id
+        assert captured['params']['base_model'] == 'yolov8s.pt'
+
+    def test_train_start_rejects_invalid_base_model(self, client):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.label import Label
+
+        with client.application.app_context():
+            ds = Dataset(name='train_invalid_base')
+            db.session.add(ds)
+            db.session.commit()
+
+            for i in range(2):
+                img = Image(
+                    dataset_id=ds.id,
+                    filename=f'invalid{i}.png',
+                    filepath=f'invalid{i}.png',
+                    width=240,
+                    height=90,
+                )
+                db.session.add(img)
+                db.session.commit()
+                lbl = Label(
+                    image_id=img.id,
+                    roi_x=0,
+                    roi_y=0,
+                    roi_width=240,
+                    roi_height=90,
+                    ground_truth='1234',
+                    num_digits=4,
+                )
+                db.session.add(lbl)
+                db.session.commit()
+            ds_id = ds.id
+
+        resp = client.post('/train/yolo/start', json={
+            'dataset_id': ds_id,
+            'base_model': 'bad-model.pt',
+            'epochs': 5,
+            'imgsz': 320,
+            'batch': 2,
+            'val_ratio': 0.2,
+            'seed': 42,
+        })
+        assert resp.status_code == 400
+        assert 'base_model must be one of' in resp.get_json()['error']
+
+    def test_train_recommend_success(self, client, monkeypatch):
+        import routes.train_yolo as train_routes
+
+        monkeypatch.setattr(
+            train_routes,
+            'recommend_training_params',
+            lambda dataset_id, base_model, device: {
+                'dataset_id': dataset_id,
+                'dataset_name': 'demo',
+                'stats': {'labeled_count': 10},
+                'recommended': {
+                    'epochs': 40,
+                    'imgsz': 640,
+                    'batch': 4,
+                    'seed': 42,
+                    'base_model': base_model,
+                },
+                'notes': ['ok'],
+            },
+        )
+
+        resp = client.post('/train/yolo/recommend', json={
+            'dataset_id': 1,
+            'base_model': 'yolov8s.pt',
+            'device': 'cpu',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['recommended']['epochs'] == 40
+        assert data['recommended']['base_model'] == 'yolov8s.pt'
+
+    def test_train_recommend_rejects_invalid_base_model(self, client):
+        resp = client.post('/train/yolo/recommend', json={
+            'dataset_id': 1,
+            'base_model': 'bad-model.pt',
+        })
+        assert resp.status_code == 400
+        assert 'base_model must be one of' in resp.get_json()['error']
 
     def test_activate_model(self, client):
         from models.dataset import Dataset

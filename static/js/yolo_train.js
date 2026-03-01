@@ -1,6 +1,7 @@
 (function() {
     const form = document.getElementById('yolo-train-form');
     const trainBtn = document.getElementById('yolo-train-btn');
+    const autoBtn = document.getElementById('train-auto-btn');
     const statusEl = document.getElementById('yolo-train-status');
     const logEl = document.getElementById('yolo-train-log');
     const checkBtn = document.getElementById('check-tesseract-btn');
@@ -59,6 +60,64 @@
         }, 2000);
     }
 
+    async function requestAutoSuggest() {
+        const datasetId = parseInt(document.getElementById('train-dataset').value, 10);
+        const baseModel = document.getElementById('train-base-model').value;
+        const device = document.getElementById('train-device').value.trim();
+        if (!datasetId) {
+            log('Select a dataset before requesting suggestions.', 'error');
+            return;
+        }
+
+        autoBtn.disabled = true;
+        autoBtn.textContent = 'Suggesting...';
+        try {
+            const resp = await fetch('/train/yolo/recommend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dataset_id: datasetId,
+                    base_model: baseModel,
+                    device,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.error) {
+                log(data.error || 'Could not generate suggestions.', 'error');
+                return;
+            }
+
+            const rec = data.recommended || {};
+            if (typeof rec.epochs === 'number') {
+                document.getElementById('train-epochs').value = rec.epochs;
+            }
+            if (typeof rec.imgsz === 'number') {
+                document.getElementById('train-imgsz').value = rec.imgsz;
+            }
+            if (typeof rec.batch === 'number') {
+                document.getElementById('train-batch').value = rec.batch;
+            }
+            if (typeof rec.seed === 'number') {
+                document.getElementById('train-seed').value = rec.seed;
+            }
+
+            if (Array.isArray(data.notes) && data.notes.length) {
+                log(`Auto-suggest: ${data.notes.join(' ')}`, 'info');
+            } else {
+                log('Auto-suggest complete.', 'success');
+            }
+        } catch (err) {
+            log(String(err), 'error');
+        } finally {
+            autoBtn.disabled = false;
+            autoBtn.textContent = 'Auto-suggest Params';
+        }
+    }
+
+    if (autoBtn) {
+        autoBtn.addEventListener('click', requestAutoSuggest);
+    }
+
     if (form) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -69,6 +128,7 @@
 
             const payload = {
                 dataset_id: parseInt(document.getElementById('train-dataset').value, 10),
+                base_model: document.getElementById('train-base-model').value,
                 epochs: parseInt(document.getElementById('train-epochs').value, 10),
                 imgsz: parseInt(document.getElementById('train-imgsz').value, 10),
                 batch: parseInt(document.getElementById('train-batch').value, 10),

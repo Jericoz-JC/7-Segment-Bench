@@ -96,6 +96,7 @@ class YoloTrainingJobManager:
                     imgsz=int(params.get('imgsz', 640)),
                     batch=int(params.get('batch', 8)),
                     device=str(params.get('device', '')).strip() or None,
+                    base_model=str(params.get('base_model', 'yolov8s.pt')).strip() or 'yolov8s.pt',
                 )
 
                 self._update(job_id, phase='register', message='Registering trained model')

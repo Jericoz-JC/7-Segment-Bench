@@ -1,6 +1,7 @@
 import base64
 import random
 from datetime import datetime, timezone
+import json
 
 import cv2
 import numpy as np
@@ -47,7 +48,6 @@ def run_test():
     # Parse ROI
     roi_data = request.form.get('roi')
     if roi_data:
-        import json
         roi_dict = json.loads(roi_data)
         roi = ROI.from_dict(roi_dict)
     else:
@@ -58,10 +58,20 @@ def run_test():
     if not selected:
         selected = [p['slug'] for p in pipelines.list_pipelines()]
 
+    pipeline_configs_raw = request.form.get('pipeline_configs', '').strip()
+    pipeline_configs = {}
+    if pipeline_configs_raw:
+        try:
+            pipeline_configs = json.loads(pipeline_configs_raw)
+        except json.JSONDecodeError:
+            return jsonify({'error': 'pipeline_configs must be valid JSON'}), 400
+        if not isinstance(pipeline_configs, dict):
+            return jsonify({'error': 'pipeline_configs must be an object'}), 400
+
     results = {}
     for slug in selected:
         try:
-            pipe = pipelines.get_pipeline(slug)
+            pipe = pipelines.get_pipeline(slug, pipeline_configs.get(slug))
             pipe.load()
             result = pipe.predict_timed(image, roi)
             pipe.unload()

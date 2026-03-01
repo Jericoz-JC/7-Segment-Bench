@@ -12,6 +12,38 @@
     </div>
 </div>
 
+<section class="card quick-lab-card llm-config-panel" id="quick-llm-config" style="display:none">
+    <h2>LLM Vision Settings (p07)</h2>
+    <div class="quick-lab-row">
+        <div class="form-group">
+            <label for="quick-llm-provider">Provider</label>
+            <select id="quick-llm-provider">
+                <option value="anthropic">anthropic</option>
+                <option value="openai">openai</option>
+                <option value="openrouter">openrouter</option>
+                <option value="ollama">ollama</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="quick-llm-model">Model</label>
+            <input type="text" id="quick-llm-model" value="claude-sonnet-4-20250514">
+        </div>
+    </div>
+    <div class="quick-lab-row">
+        <div class="form-group">
+            <label for="quick-llm-key">API Key (optional if already saved)</label>
+            <input type="password" id="quick-llm-key" placeholder="sk-...">
+        </div>
+        <div class="form-group" id="quick-llm-baseurl-wrap" style="display:none">
+            <label for="quick-llm-baseurl">Ollama Base URL</label>
+            <input type="text" id="quick-llm-baseurl" value="http://localhost:11434/v1">
+        </div>
+    </div>
+    <p class="form-help">
+        Shared across Dataset Batch and Single-Image runs when `p07_llm_vision` is selected.
+    </p>
+</section>
+
 <div class="quick-lab-grid">
     <section class="card quick-lab-card">
         <h2>Dataset Batch</h2>
@@ -42,7 +74,7 @@
                 <div class="pipeline-checkboxes">
                     {% for p in pipelines %}
                     <label class="checkbox-label">
-                        <input type="checkbox" name="batch_pipelines" value="{{ p.slug }}" checked>
+                        <input type="checkbox" name="batch_pipelines" value="{{ p.slug }}" {% if p.slug != 'p07_llm_vision' %}checked{% endif %}>
                         <span class="pipeline-name">{{ p.name }}</span>
                         {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
                         {% if p.is_trainable %}<span class="tag tag-train">Trainable</span>{% endif %}
@@ -97,7 +129,7 @@
                 <div class="pipeline-checkboxes">
                     {% for p in pipelines %}
                     <label class="checkbox-label">
-                        <input type="checkbox" name="single_pipelines" value="{{ p.slug }}" checked>
+                        <input type="checkbox" name="single_pipelines" value="{{ p.slug }}" {% if p.slug != 'p07_llm_vision' %}checked{% endif %}>
                         <span class="pipeline-name">{{ p.name }}</span>
                         {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
                     </label>

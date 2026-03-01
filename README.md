@@ -31,6 +31,7 @@ Primary use case: test how each pipeline holds up across different datasets and 
   - Export dataset labels to JSON.
 - Benchmark orchestration:
   - Run selected pipelines over all labeled images.
+  - Conditional LLM settings panel for `p07_llm_vision` (provider/model/base URL).
   - Live progress via SSE.
   - Per-image, per-pipeline result persistence.
 - Metrics and analytics:
@@ -45,12 +46,16 @@ Primary use case: test how each pipeline holds up across different datasets and 
 - Quick test mode:
   - Batch mode: select a dataset and run a random 10-50 labeled-image sample.
   - Single-image mode: upload one image with optional ROI for deep debug.
+  - Shared LLM settings panel appears automatically when `p07_llm_vision` is selected.
+  - LLM provider keys entered in Quick Test are saved as active keys via `/api/keys`.
   - Batch quick tests persist as normal benchmark runs and open in Results.
 - API key storage for online models:
   - Store active provider key (`anthropic`, `openai`, `openrouter`, `ollama`) via API routes.
   - `ollama` supports key-optional local use.
 - In-app YOLO trainer for `p06`:
   - Launch train/val split export + training job from labeled datasets.
+  - Choose base checkpoint (`yolov8n.pt` or `yolov8s.pt`), with `yolov8s.pt` default.
+  - Auto-suggest `epochs`, `imgsz`, `batch`, and `seed` from dataset stats.
   - Activate a trained checkpoint as the default `p06` model.
 
 ## Built-in Pipelines (7 Total)
@@ -64,7 +69,7 @@ All pipelines are auto-registered from `pipelines/__init__.py`.
 | `p03_hsv_color` | HSV Color Filter | HSV mask (red/green/blue) + glare rejection + segment map | No | No | `num_digits`, `color` | Best when segment color is known and stable. |
 | `p04_template_matching` | Template Matching | Synthetic template generation + NCC matching | No | No | `num_digits`, `template_height`, `template_width` | Useful non-learning baseline with explicit shape matching. |
 | `p05_tesseract_ocr` | Tesseract OCR | OCR with digit whitelist | No | No | `target_height`, `psm`, `tessdata`, `lang` | Requires local Tesseract runtime; sensitive to font and preprocessing. |
-| `p06_yolo_nano` | YOLOv8 Nano | Detection model (digit classes) | No | Yes | `model_path`, `ncnn_path` | Supports trained model activation via YOLO Training Lab; fallback `yolov8n.pt` remains available. |
+| `p06_yolo_nano` | YOLOv8 Detector | Detection model (digit classes) | No | Yes | `model_path`, `ncnn_path` | Training Lab supports `yolov8n.pt` and `yolov8s.pt` base checkpoints; `yolov8s.pt` is the default recommendation. |
 | `p07_llm_vision` | LLM Vision API | Zero-shot image-to-digits (Claude/GPT-4o/OpenRouter/Ollama style) | Yes | No | `provider`, `api_key`, `model` | Supports `anthropic`, `openai`, `openrouter`, and local `ollama` providers. |
 
 ### How Each Pipeline Works (Mechanics)
@@ -98,6 +103,10 @@ Quick Test now has two flows in one page:
   - upload image
   - optional ROI draw
   - run selected pipelines and inspect debug images
+- **Shared LLM Settings (conditional)**:
+  - appears only when `p07_llm_vision` is selected in batch or single pipeline list
+  - provider/model/base URL config is sent as `pipeline_configs` for that run
+  - entering an API key saves it as the active key for that provider
 
 Batch runs use a random subset and are saved as `BenchmarkRun` records.
 
@@ -109,16 +118,38 @@ Training workflow:
 
 1. Select one labeled dataset.
 2. Configure training settings:
+   - `base_model` (`yolov8n.pt` or `yolov8s.pt`, default `yolov8s.pt`)
    - `epochs`
    - `imgsz`
    - `batch`
    - `val_ratio`
+   - `seed`
    - optional `device`
+   - optional auto-suggest button to fill `epochs/imgsz/batch/seed`
 3. Start training (background job).
 4. Monitor status in the UI.
 5. Activate a trained model.
 
 Activated models are stored in `trained_models` and automatically used by `p06` when no explicit `model_path` is passed.
+
+### YOLOv8s Recommendation
+
+Upgrading from `yolov8n.pt` to `yolov8s.pt` is a practical sweet spot for this project:
+
+- around 3x the parameters of `v8n` but still fast for training/inference
+- suitable for NCNN export for Raspberry Pi deployment
+- with ~3,333 images across 10 digit classes (~333/class), dataset size is strong enough to benefit from `v8s`
+
+The auto-suggest button is heuristic guidance, not hyperparameter search. Final tuning should still be validated against your held-out split.
+
+### Dataset Export Split Note
+
+`export_yolo_dataset(...)` now writes a true train/val split and generates `data.yaml` with:
+
+- `train: train/images`
+- `val: val/images`
+
+This avoids train==val leakage and makes validation metrics meaningful.
 
 ## Provider Key API
 
@@ -130,6 +161,9 @@ Activated models are stored in `trained_models` and automatically used by `p06` 
   - optional for `ollama` (local endpoint flow)
 
 `GET /api/keys` lists stored providers and active states.
+
+UI note:
+- Benchmark and Quick Test call this API when you enter a key in the LLM settings panel.
 
 ## End-to-End Workflow
 
@@ -509,6 +543,8 @@ Result:
 - YOLO training fails immediately:
   - verify selected dataset has labeled images.
   - ensure `val_ratio` keeps at least one train and one val sample.
+  - confirm `base_model` is either `yolov8n.pt` or `yolov8s.pt`.
+  - if auto-suggest picked values that are too aggressive for your hardware, reduce `imgsz` and `batch`.
   - verify checkpoint output path is writable under `data/training/p06_yolo_nano`.
 - Benchmark says no labeled images:
   - ensure labels exist for images in selected dataset.

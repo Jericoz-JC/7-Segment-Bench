@@ -30,13 +30,16 @@ def index():
 
 @bp.route('/start', methods=['POST'])
 def start_benchmark():
-    data = request.get_json()
+    data = request.get_json() or {}
     dataset_id = data.get('dataset_id')
     pipeline_slugs = data.get('pipeline_slugs', [])
     run_name = data.get('name', 'Benchmark Run')
+    pipeline_configs = data.get('pipeline_configs', {})
 
     if not dataset_id or not pipeline_slugs:
         return jsonify({'error': 'Dataset and at least one pipeline required'}), 400
+    if not isinstance(pipeline_configs, dict):
+        return jsonify({'error': 'pipeline_configs must be an object'}), 400
 
     dataset = Dataset.query.get_or_404(dataset_id)
 
@@ -46,7 +49,7 @@ def start_benchmark():
         status='pending',
     )
     run.pipeline_slugs = pipeline_slugs
-    run.pipeline_configs = data.get('pipeline_configs', {})
+    run.pipeline_configs = pipeline_configs
     db.session.add(run)
     db.session.commit()
 

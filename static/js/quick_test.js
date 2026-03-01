@@ -1,5 +1,111 @@
 (function() {
     // ----------------------------
+    // Shared LLM settings
+    // ----------------------------
+    const llmPanel = document.getElementById('quick-llm-config');
+    const llmProvider = document.getElementById('quick-llm-provider');
+    const llmModel = document.getElementById('quick-llm-model');
+    const llmApiKey = document.getElementById('quick-llm-key');
+    const llmBaseUrlWrap = document.getElementById('quick-llm-baseurl-wrap');
+    const llmBaseUrl = document.getElementById('quick-llm-baseurl');
+
+    const defaultModels = {
+        anthropic: 'claude-sonnet-4-20250514',
+        openai: 'gpt-4o',
+        openrouter: 'openrouter/auto',
+        ollama: 'llava',
+    };
+
+    function getCheckedPipelineSlugs(inputName) {
+        return Array.from(document.querySelectorAll(`input[name="${inputName}"]:checked`))
+            .map((el) => el.value);
+    }
+
+    function getAllPipelineSlugs(inputName) {
+        return Array.from(document.querySelectorAll(`input[name="${inputName}"]`))
+            .map((el) => el.value);
+    }
+
+    function shouldShowLlmPanel() {
+        const batchSlugs = getCheckedPipelineSlugs('batch_pipelines');
+        const singleSlugs = getCheckedPipelineSlugs('single_pipelines');
+        return batchSlugs.includes('p07_llm_vision') || singleSlugs.includes('p07_llm_vision');
+    }
+
+    function updateLlmUi() {
+        if (!llmPanel || !llmProvider || !llmBaseUrlWrap) return;
+        llmPanel.style.display = shouldShowLlmPanel() ? 'block' : 'none';
+        const provider = (llmProvider.value || 'anthropic').trim().toLowerCase();
+        llmBaseUrlWrap.style.display = provider === 'ollama' ? 'block' : 'none';
+    }
+
+    async function saveProviderKey(provider, keyValue) {
+        const resp = await fetch('/api/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider, key_value: keyValue }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            throw new Error(data.error || 'Could not save API key.');
+        }
+    }
+
+    async function hasActiveProviderKey(provider) {
+        const resp = await fetch('/api/keys');
+        const data = await resp.json();
+        if (!resp.ok || !Array.isArray(data)) {
+            throw new Error('Could not verify API key status.');
+        }
+        return data.some((item) => item.provider === provider && item.is_active);
+    }
+
+    async function ensureLlmProviderReady(provider, keyValue) {
+        if (keyValue) {
+            await saveProviderKey(provider, keyValue);
+            if (llmApiKey) llmApiKey.value = '';
+            return;
+        }
+        if (provider === 'ollama') {
+            return;
+        }
+        const hasActive = await hasActiveProviderKey(provider);
+        if (!hasActive) {
+            throw new Error(`No active API key found for ${provider}. Enter one in the LLM settings.`);
+        }
+    }
+
+    function buildLlmPipelineConfigs(slugs) {
+        const configs = {};
+        if (!slugs.includes('p07_llm_vision') || !llmProvider || !llmModel) {
+            return configs;
+        }
+
+        const provider = (llmProvider.value || 'anthropic').trim().toLowerCase();
+        const model = llmModel.value.trim() || defaultModels[provider] || defaultModels.openai;
+        const cfg = { provider, model };
+        if (provider === 'ollama' && llmBaseUrl) {
+            cfg.base_url = llmBaseUrl.value.trim() || 'http://localhost:11434/v1';
+        }
+        configs.p07_llm_vision = cfg;
+        return configs;
+    }
+
+    document.querySelectorAll('input[name="batch_pipelines"], input[name="single_pipelines"]').forEach((cb) => {
+        cb.addEventListener('change', updateLlmUi);
+    });
+    if (llmProvider) {
+        llmProvider.addEventListener('change', () => {
+            const provider = (llmProvider.value || 'anthropic').trim().toLowerCase();
+            if (llmModel) {
+                llmModel.value = defaultModels[provider] || defaultModels.openai;
+            }
+            updateLlmUi();
+        });
+    }
+    updateLlmUi();
+
+    // ----------------------------
     // Batch quick-test flow
     // ----------------------------
     const batchForm = document.getElementById('batch-test-form');
@@ -37,8 +143,7 @@
             const datasetId = document.getElementById('batch-dataset').value;
             const sampleSize = parseInt(document.getElementById('batch-size').value, 10);
             const runName = document.getElementById('batch-name').value.trim();
-            const slugs = Array.from(document.querySelectorAll('input[name="batch_pipelines"]:checked'))
-                .map((el) => el.value);
+            const slugs = getCheckedPipelineSlugs('batch_pipelines');
 
             if (!datasetId || !slugs.length) {
                 logBatch('Select a dataset and at least one pipeline.', 'error');
@@ -61,12 +166,20 @@
             batchSummary.textContent = 'Starting batch run...';
 
             try {
+                const pipelineConfigs = buildLlmPipelineConfigs(slugs);
+                if (pipelineConfigs.p07_llm_vision) {
+                    const provider = pipelineConfigs.p07_llm_vision.provider;
+                    const keyValue = llmApiKey ? llmApiKey.value.trim() : '';
+                    await ensureLlmProviderReady(provider, keyValue);
+                }
+
                 const resp = await fetch('/test/run-batch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         dataset_id: parseInt(datasetId, 10),
                         pipeline_slugs: slugs,
+                        pipeline_configs: pipelineConfigs,
                         sample_size: sampleSize,
                         name: runName || undefined,
                     }),
@@ -105,7 +218,7 @@
                         case 'progress':
                             setBatchProgress(msg.processed, msg.total);
                             logBatch(
-                                `${msg.pipeline} | ${msg.image} | pred=\"${msg.predicted}\" gt=\"${msg.ground_truth}\"`,
+                                `${msg.pipeline} | ${msg.image} | pred="${msg.predicted}" gt="${msg.ground_truth}"`,
                                 msg.correct ? 'success' : 'warn'
                             );
                             break;
@@ -119,7 +232,7 @@
                             setBatchProgress(1, 1);
                             batchSummary.textContent = `Completed run #${msg.run_id}.`;
                             logBatch(
-                                `<a href=\"/results/${msg.run_id}\" class=\"btn btn-primary\">Open Results</a>`,
+                                `<a href="/results/${msg.run_id}" class="btn btn-primary">Open Results</a>`,
                                 'html'
                             );
                             batchEventSource.close();
@@ -252,45 +365,66 @@
             singleBtn.disabled = true;
             singleBtn.textContent = 'Running...';
 
-            const form = new FormData();
-            form.append('image', testImage);
-            if (testROI) form.append('roi', JSON.stringify(testROI));
-            document.querySelectorAll('input[name="single_pipelines"]:checked').forEach((cb) => {
-                form.append('pipelines', cb.value);
-            });
-
-            const resp = await fetch('/test/run', { method: 'POST', body: form });
-            const data = await resp.json();
-
-            const grid = document.getElementById('single-results-grid');
-            grid.innerHTML = '';
-            document.getElementById('single-results-panel').style.display = 'block';
-
-            Object.entries(data).forEach(([slug, result]) => {
-                const card = document.createElement('div');
-                card.className = 'result-card';
-                let debugHtml = '';
-                if (result.debug_images) {
-                    Object.entries(result.debug_images).forEach(([name, b64]) => {
-                        debugHtml +=
-                            `<div class=\"debug-img\"><img src=\"data:image/png;base64,${b64}\" alt=\"${name}\"><span>${name}</span></div>`;
-                    });
+            try {
+                const checkedSlugs = getCheckedPipelineSlugs('single_pipelines');
+                const slugsForConfig = checkedSlugs.length ? checkedSlugs : getAllPipelineSlugs('single_pipelines');
+                const pipelineConfigs = buildLlmPipelineConfigs(slugsForConfig);
+                if (pipelineConfigs.p07_llm_vision) {
+                    const provider = pipelineConfigs.p07_llm_vision.provider;
+                    const keyValue = llmApiKey ? llmApiKey.value.trim() : '';
+                    await ensureLlmProviderReady(provider, keyValue);
                 }
-                card.innerHTML = `
-                    <h3>${slug}</h3>
-                    <div class=\"result-predicted\">${result.predicted || '(none)'}</div>
-                    <div class=\"result-meta\">
-                        <span>Latency: ${result.latency_ms} ms</span>
-                        <span>Confidence: ${(result.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                    ${result.error ? `<div class=\"error-msg\">${result.error}</div>` : ''}
-                    ${debugHtml ? `<div class=\"debug-images\">${debugHtml}</div>` : ''}
-                `;
-                grid.appendChild(card);
-            });
 
-            singleBtn.disabled = false;
-            singleBtn.textContent = 'Run Single Image';
+                const form = new FormData();
+                form.append('image', testImage);
+                if (testROI) form.append('roi', JSON.stringify(testROI));
+                checkedSlugs.forEach((slug) => {
+                    form.append('pipelines', slug);
+                });
+                if (Object.keys(pipelineConfigs).length) {
+                    form.append('pipeline_configs', JSON.stringify(pipelineConfigs));
+                }
+
+                const resp = await fetch('/test/run', { method: 'POST', body: form });
+                const data = await resp.json();
+                if (!resp.ok || data.error) {
+                    throw new Error(data.error || 'Single-image run failed.');
+                }
+
+                const grid = document.getElementById('single-results-grid');
+                grid.innerHTML = '';
+                document.getElementById('single-results-panel').style.display = 'block';
+
+                Object.entries(data).forEach(([slug, result]) => {
+                    const card = document.createElement('div');
+                    card.className = 'result-card';
+                    let debugHtml = '';
+                    if (result.debug_images) {
+                        Object.entries(result.debug_images).forEach(([name, b64]) => {
+                            debugHtml +=
+                                `<div class="debug-img"><img src="data:image/png;base64,${b64}" alt="${name}"><span>${name}</span></div>`;
+                        });
+                    }
+                    card.innerHTML = `
+                        <h3>${slug}</h3>
+                        <div class="result-predicted">${result.predicted || '(none)'}</div>
+                        <div class="result-meta">
+                            <span>Latency: ${result.latency_ms} ms</span>
+                            <span>Confidence: ${(result.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                        ${result.error ? `<div class="error-msg">${result.error}</div>` : ''}
+                        ${debugHtml ? `<div class="debug-images">${debugHtml}</div>` : ''}
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                const grid = document.getElementById('single-results-grid');
+                grid.innerHTML = `<div class="form-msg error">${String(err)}</div>`;
+                document.getElementById('single-results-panel').style.display = 'block';
+            } finally {
+                singleBtn.disabled = false;
+                singleBtn.textContent = 'Run Single Image';
+            }
         });
     }
 })();

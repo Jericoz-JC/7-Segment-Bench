@@ -30,7 +30,7 @@
                 <div class="pipeline-checkboxes">
                     {% for p in pipelines %}
                     <label class="checkbox-label pipeline-color-{{ p.slug }}">
-                        <input type="checkbox" name="pipelines" value="{{ p.slug }}" checked>
+                        <input type="checkbox" name="pipelines" value="{{ p.slug }}" {% if p.slug != 'p07_llm_vision' %}checked{% endif %}>
                         <span class="pipeline-name">{{ p.name }}</span>
                         {% if p.is_online %}<span class="tag tag-online">Online</span>{% endif %}
                         {% if p.is_trainable %}<span class="tag tag-train">Trainable</span>{% endif %}
@@ -38,6 +38,37 @@
                     </label>
                     {% endfor %}
                 </div>
+            </div>
+            <div class="form-group llm-config-panel" id="bench-llm-config" style="display:none">
+                <label>LLM Vision Settings (p07)</label>
+                <div class="quick-lab-row">
+                    <div class="form-group">
+                        <label for="bench-llm-provider">Provider</label>
+                        <select id="bench-llm-provider">
+                            <option value="anthropic">anthropic</option>
+                            <option value="openai">openai</option>
+                            <option value="openrouter">openrouter</option>
+                            <option value="ollama">ollama</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="bench-llm-model">Model</label>
+                        <input type="text" id="bench-llm-model" value="claude-sonnet-4-20250514">
+                    </div>
+                </div>
+                <div class="quick-lab-row">
+                    <div class="form-group">
+                        <label for="bench-llm-key">API Key (optional if already saved)</label>
+                        <input type="password" id="bench-llm-key" placeholder="sk-...">
+                    </div>
+                    <div class="form-group" id="bench-llm-baseurl-wrap" style="display:none">
+                        <label for="bench-llm-baseurl">Ollama Base URL</label>
+                        <input type="text" id="bench-llm-baseurl" value="http://localhost:11434/v1">
+                    </div>
+                </div>
+                <p class="form-help">
+                    Entering a key saves it as this provider's active key via `/api/keys`.
+                </p>
             </div>
             <button type="submit" class="btn btn-primary" id="start-btn">Start Benchmark</button>
         </form>

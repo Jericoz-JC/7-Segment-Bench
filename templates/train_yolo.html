@@ -28,6 +28,26 @@
 
             <div class="quick-lab-row">
                 <div class="form-group">
+                    <label for="train-base-model">Base Model</label>
+                    <select id="train-base-model" required>
+                        {% for model_name in yolo_base_models %}
+                        <option value="{{ model_name }}" {% if model_name == 'yolov8s.pt' %}selected{% endif %}>
+                            {{ model_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="button" class="btn" id="train-auto-btn">Auto-suggest Params</button>
+                </div>
+            </div>
+            <p class="form-help">
+                Auto-suggest uses dataset size and ROI scale to recommend `epochs/imgsz/batch/seed`.
+            </p>
+
+            <div class="quick-lab-row">
+                <div class="form-group">
                     <label for="train-epochs">Epochs</label>
                     <input type="number" id="train-epochs" min="1" max="500" value="30" required>
                 </div>

@@ -767,6 +767,17 @@ kbd {
 .checkbox-label input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 .pipeline-name { font-weight: 600; }
 .pipeline-desc { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.form-help {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.llm-config-panel {
+    border: 1px solid var(--border);
+    background: linear-gradient(135deg, rgba(34,211,238,0.08), rgba(10,14,23,0.92));
+}
 
 /* === Benchmark Log === */
 .bench-log {

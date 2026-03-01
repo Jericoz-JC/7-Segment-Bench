@@ -16,6 +16,8 @@ from models.image import Image
 from models.label import Label
 from services.image_service import get_image_path
 
+YOLO_BASE_MODELS = ('yolov8n.pt', 'yolov8s.pt')
+
 
 def _digit_label_lines(img: Image, label: Label) -> list[str]:
     gt = label.ground_truth or ''
@@ -69,36 +71,20 @@ def _get_labeled_pairs(dataset_id: int) -> list[tuple[Image, Label]]:
     )
 
 
-def export_yolo_dataset(dataset_id: int, output_dir: str) -> str:
-    """Backward-compatible flat YOLO export (train=val=images)."""
-    dataset = Dataset.query.get(dataset_id)
-    if not dataset:
-        raise ValueError(f'Dataset {dataset_id} not found')
-
-    out_path = Path(output_dir)
-    images_dir = out_path / 'images'
-    labels_dir = out_path / 'labels'
-    images_dir.mkdir(parents=True, exist_ok=True)
-    labels_dir.mkdir(parents=True, exist_ok=True)
-
-    for img, label in _get_labeled_pairs(dataset_id):
-        stem = Path(img.filepath).stem
-        suffix = Path(img.filepath).suffix or '.png'
-        target_name = f'{img.id}_{stem}{suffix}'
-        target_img = images_dir / target_name
-        target_lbl = labels_dir / f'{img.id}_{stem}.txt'
-        shutil.copy2(get_image_path(img), target_img)
-        target_lbl.write_text('\n'.join(_digit_label_lines(img, label)), encoding='utf-8')
-
-    data_yaml = {
-        'path': str(out_path.resolve()),
-        'train': 'images',
-        'val': 'images',
-        'names': {i: str(i) for i in range(10)},
-    }
-    yaml_path = out_path / 'data.yaml'
-    yaml_path.write_text(yaml.safe_dump(data_yaml), encoding='utf-8')
-    return str(yaml_path)
+def export_yolo_dataset(
+    dataset_id: int,
+    output_dir: str,
+    val_ratio: float = 0.2,
+    seed: int = 42,
+) -> str:
+    """Export a dataset into train/val YOLO format and return data.yaml path."""
+    split_info = build_split_yolo_dataset(
+        dataset_id=dataset_id,
+        output_dir=output_dir,
+        val_ratio=val_ratio,
+        seed=seed,
+    )
+    return split_info['yaml_path']
 
 
 def build_split_yolo_dataset(
@@ -158,6 +144,159 @@ def build_split_yolo_dataset(
     }
 
 
+def _median(values: list[int]) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return int(ordered[mid])
+    return int(round((ordered[mid - 1] + ordered[mid]) / 2))
+
+
+def _normalize_device_hint(device: str) -> str:
+    value = (device or '').strip().lower()
+    if not value or value == 'auto':
+        return 'auto'
+    if value.isdigit() or value.startswith('cuda') or value.startswith('gpu'):
+        return 'cuda'
+    if value.startswith('mps'):
+        return 'mps'
+    if 'cpu' in value:
+        return 'cpu'
+    return 'auto'
+
+
+def _detect_gpu_vram_gb() -> int:
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return 0
+        props = torch.cuda.get_device_properties(0)
+        return int(round(props.total_memory / (1024 ** 3)))
+    except Exception:
+        return 0
+
+
+def recommend_training_params(
+    dataset_id: int,
+    base_model: str = 'yolov8s.pt',
+    device: str = '',
+) -> dict:
+    """Return explainable, deterministic YOLO training parameter suggestions."""
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        raise ValueError(f'Dataset {dataset_id} not found')
+    if base_model not in YOLO_BASE_MODELS:
+        raise ValueError(f'base_model must be one of: {", ".join(YOLO_BASE_MODELS)}')
+
+    rows = (
+        db.session.query(Image, Label)
+        .join(Label)
+        .filter(Image.dataset_id == dataset_id)
+        .all()
+    )
+    if not rows:
+        raise ValueError('Need labeled images before generating recommendations')
+
+    image_long_sides: list[int] = []
+    roi_heights: list[int] = []
+    digit_counts: list[int] = []
+
+    for img, label in rows:
+        width = int(img.width or 0)
+        height = int(img.height or 0)
+        if width > 0 and height > 0:
+            image_long_sides.append(max(width, height))
+
+        roi_h = int(label.roi_height or 0)
+        if roi_h <= 0:
+            roi_h = height
+        if roi_h > 0:
+            roi_heights.append(roi_h)
+
+        digits = sum(ch.isdigit() for ch in (label.ground_truth or ''))
+        digit_counts.append(digits if digits > 0 else int(label.num_digits or 0) or 1)
+
+    labeled_count = len(rows)
+    median_long_side = _median(image_long_sides)
+    median_roi_height = _median(roi_heights)
+    median_digits = max(1, _median(digit_counts))
+
+    if median_long_side <= 0:
+        median_long_side = 640
+    if median_roi_height <= 0:
+        median_roi_height = max(32, median_long_side // 3)
+
+    suggested_target = max(int(median_long_side * 0.75), median_roi_height * max(2, median_digits))
+    if suggested_target <= 256:
+        imgsz = 320
+    elif suggested_target <= 448:
+        imgsz = 512
+    else:
+        imgsz = 640
+
+    if labeled_count >= 5000:
+        epochs = 36
+    elif labeled_count >= 2500:
+        epochs = 44
+    elif labeled_count >= 1000:
+        epochs = 58
+    elif labeled_count >= 300:
+        epochs = 80
+    else:
+        epochs = 110
+    if base_model == 'yolov8s.pt':
+        epochs = max(20, epochs - 8)
+
+    normalized_device = _normalize_device_hint(device)
+    gpu_like = normalized_device in ('cuda', 'mps')
+    vram_gb = _detect_gpu_vram_gb() if normalized_device == 'cuda' else 0
+
+    base_batch = 10 if base_model == 'yolov8n.pt' else 6
+    if not gpu_like:
+        base_batch = max(2, base_batch - 3)
+    if vram_gb >= 12:
+        base_batch += 4
+    elif vram_gb >= 8:
+        base_batch += 2
+    if imgsz >= 640:
+        base_batch -= 2
+    elif imgsz <= 320:
+        base_batch += 2
+    batch = max(1, min(128, int(base_batch)))
+
+    notes = [
+        'Auto-suggest uses dataset-size and ROI-scale heuristics; keep manual overrides for final tuning.',
+        f'Chosen base model: {base_model}.',
+        f'Device hint resolved to: {normalized_device}.',
+    ]
+    if normalized_device == 'cuda':
+        if vram_gb > 0:
+            notes.append(f'Detected CUDA GPU memory: ~{vram_gb} GB.')
+        else:
+            notes.append('CUDA selected, but GPU memory could not be detected; using conservative batch.')
+
+    return {
+        'dataset_id': dataset_id,
+        'dataset_name': dataset.name,
+        'stats': {
+            'labeled_count': labeled_count,
+            'median_image_long_side': median_long_side,
+            'median_roi_height': median_roi_height,
+            'median_num_digits': median_digits,
+        },
+        'recommended': {
+            'epochs': int(epochs),
+            'imgsz': int(imgsz),
+            'batch': int(batch),
+            'seed': 42,
+            'base_model': base_model,
+        },
+        'notes': notes,
+    }
+
+
 def train_yolo_model(
     data_yaml_path: str,
     project_dir: str,
@@ -166,11 +305,15 @@ def train_yolo_model(
     imgsz: int,
     batch: int,
     device: str | None = None,
+    base_model: str = 'yolov8s.pt',
 ) -> dict:
     """Train a YOLOv8 model and return artifact metadata."""
     from ultralytics import YOLO
 
-    model = YOLO('yolov8n.pt')
+    if base_model not in YOLO_BASE_MODELS:
+        raise ValueError(f'base_model must be one of: {", ".join(YOLO_BASE_MODELS)}')
+
+    model = YOLO(base_model)
     kwargs = {
         'data': data_yaml_path,
         'epochs': epochs,
