@@ -1,5 +1,9 @@
 data/uploads/
 data/thumbnails/
+data/training/
+external_datasets/
+yolov8*.pt
+runs/
 instance/
 __pycache__/
 *.pyc
