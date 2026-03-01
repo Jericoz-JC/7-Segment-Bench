@@ -13,15 +13,20 @@
     <div class="labeler-canvas-wrap">
         <canvas id="labeler-canvas"></canvas>
         <div class="labeler-instructions">
-            Click and drag to draw ROI. Press <kbd>Enter</kbd> to save label.
+            Click and drag to draw ROI. Press <kbd>Enter</kbd> to save and go next.
+            Press <kbd>Shift</kbd>+<kbd>Enter</kbd> to save and stay.
             <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to navigate. <kbd>Delete</kbd> to remove label.
         </div>
     </div>
 
     <div class="labeler-panel">
         <div class="form-group">
-            <label for="gt-input">Ground Truth Digits</label>
-            <input type="text" id="gt-input" placeholder="e.g. 0237" pattern="[0-9]*" class="gt-input">
+            <label for="gt-input">Ground Truth (digits, '-' and '.')</label>
+            <input type="text" id="gt-input" placeholder="e.g. -38.20" pattern="[-0-9.]*" class="gt-input" spellcheck="false">
+            <div class="gt-preview">
+                <span>Benchmark Target:</span>
+                <code id="benchmark-target"></code>
+            </div>
         </div>
         <div class="form-group">
             <label for="display-type">Display Type</label>
@@ -30,8 +35,14 @@
                 <option value="lcd">LCD</option>
             </select>
         </div>
+        <div class="form-group">
+            <label class="toggle-check" for="auto-suggest">
+                <input type="checkbox" id="auto-suggest" checked>
+                Auto-suggest unlabeled images with p05 (Tesseract)
+            </label>
+        </div>
         <div class="labeler-actions">
-            <button id="save-btn" class="btn btn-primary">Save Label</button>
+            <button id="save-btn" class="btn btn-primary">Save &amp; Next</button>
             <button id="delete-btn" class="btn btn-danger">Delete Label</button>
         </div>
         <div id="label-msg" class="form-msg"></div>
@@ -39,8 +50,14 @@
         <div class="label-info" id="label-info"></div>
 
         <h3>Image List</h3>
+        <div class="thumb-legend">
+            <span><i class="legend-dot verified"></i>Verified</span>
+            <span><i class="legend-dot suggested"></i>Suggested/Imported</span>
+            <span><i class="legend-dot unlabeled"></i>Unlabeled</span>
+        </div>
         <div class="image-thumbnail-list" id="thumb-list">
             {% for img in images %}
+            {% set st = label_status.get(img.id, 'unlabeled') %}
             <div class="thumb-item" data-index="{{ loop.index0 }}"
                  data-id="{{ img.id }}"
                  data-src="/data/uploads/{{ img.filepath }}"
@@ -48,7 +65,9 @@
                  data-width="{{ img.width }}" data-height="{{ img.height }}">
                 <img src="/data/thumbnails/{{ img.thumbnail_path }}" alt="{{ img.filename }}">
                 <span class="thumb-label">{{ img.filename }}</span>
-                <span class="thumb-status" id="status-{{ img.id }}"></span>
+                <span class="thumb-status {{ st }}" id="status-{{ img.id }}" data-status="{{ st }}">
+                    {% if st == 'verified' %}&#10003;{% elif st == 'suggested' %}~{% endif %}
+                </span>
             </div>
             {% endfor %}
         </div>

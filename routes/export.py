@@ -3,6 +3,7 @@ import io
 import json
 from flask import Blueprint, request, jsonify, Response
 from models.benchmark import BenchmarkRun, BenchmarkResult
+from services.label_service import benchmark_target, normalize_and_dedupe_dataset_labels
 
 bp = Blueprint('export', __name__)
 
@@ -69,21 +70,28 @@ def export_json(run_id):
 def export_labels(dataset_id):
     """Export labels for a dataset as JSON (for backup/reimport)."""
     from models.dataset import Dataset
-    from models.label import Label
     from models.image import Image
+    from models.label import Label
 
     dataset = Dataset.query.get_or_404(dataset_id)
-    images = dataset.images.all()
+    normalize_and_dedupe_dataset_labels(dataset.id)
+    images = dataset.images.order_by(Image.filename).all()
     labels_data = []
     for img in images:
-        for lbl in img.labels.all():
+        labels = img.labels.order_by(Label.updated_at.desc(), Label.id.desc()).all()
+        for lbl in labels:
             labels_data.append({
                 'filename': img.filename,
                 'roi_x': lbl.roi_x, 'roi_y': lbl.roi_y,
                 'roi_width': lbl.roi_width, 'roi_height': lbl.roi_height,
                 'ground_truth': lbl.ground_truth,
+                'ground_truth_raw': lbl.ground_truth,
+                'benchmark_target': benchmark_target(lbl.ground_truth),
                 'display_type': lbl.display_type,
                 'num_digits': lbl.num_digits,
+                'label_source': lbl.labeled_by,
+                'verified': str(lbl.labeled_by or '').lower() == 'manual',
+                'updated_at': lbl.updated_at.isoformat() if lbl.updated_at else None,
             })
 
     return Response(

@@ -3,6 +3,7 @@
 import numpy as np
 from collections import defaultdict
 from models.benchmark import BenchmarkRun, BenchmarkResult
+from services.label_service import benchmark_target
 
 
 def compute_run_metrics(run_id: int) -> dict:
@@ -36,8 +37,8 @@ def compute_run_metrics(run_id: int) -> dict:
         # Confusion matrix (10x10 for digits 0-9)
         confusion = np.zeros((10, 10), dtype=int)
         for r in valid:
-            gt = r.ground_truth
-            pred = r.predicted
+            gt = benchmark_target(r.ground_truth)
+            pred = benchmark_target(r.predicted)
             for i in range(min(len(gt), len(pred))):
                 if gt[i].isdigit() and pred[i].isdigit():
                     confusion[int(gt[i])][int(pred[i])] += 1

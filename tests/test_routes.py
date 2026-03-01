@@ -196,6 +196,101 @@ class TestLabel:
         data = resp.get_json()
         assert data['ground_truth'] == '1234'
 
+    def test_save_label_accepts_symbols_and_replaces_existing(self, client):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.label import Label
+        with client.application.app_context():
+            ds = Dataset(name='test_symbols_ds')
+            db.session.add(ds)
+            db.session.commit()
+            img = Image(
+                dataset_id=ds.id,
+                filename='symbols.png',
+                filepath='symbols.png',
+                width=640,
+                height=480,
+            )
+            db.session.add(img)
+            db.session.commit()
+
+            old = Label(
+                image_id=img.id,
+                roi_x=0,
+                roi_y=0,
+                roi_width=640,
+                roi_height=480,
+                ground_truth='1234',
+                num_digits=4,
+                labeled_by='json',
+            )
+            db.session.add(old)
+            db.session.commit()
+            img_id = img.id
+
+        resp = client.post('/label/save', json={
+            'image_id': img_id,
+            'ground_truth': ' .-3820 ',
+            'roi_x': 0, 'roi_y': 0, 'roi_width': 640, 'roi_height': 480,
+            'display_type': 'lcd',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['ground_truth_raw'] == '.-3820'
+        assert data['benchmark_target'] == '3820'
+        assert data['verified'] is True
+        assert data['label_source'] == 'manual'
+
+        with client.application.app_context():
+            labels = Label.query.filter_by(image_id=img_id).all()
+            assert len(labels) == 1
+            assert labels[0].ground_truth == '.-3820'
+            assert labels[0].num_digits == 4
+            assert labels[0].labeled_by == 'manual'
+
+    def test_suggest_label_endpoint(self, client, monkeypatch):
+        import numpy as np
+        import routes.label as label_routes
+        from pipelines.base import PipelineResult
+        from models.dataset import Dataset
+        from models.image import Image
+
+        class FakePipe:
+            def load(self):
+                return None
+
+            def unload(self):
+                return None
+
+            def predict_timed(self, image, roi):
+                return PipelineResult(predicted='-38.20', confidence=0.82, latency_ms=3.1)
+
+        with client.application.app_context():
+            ds = Dataset(name='test_suggest_ds')
+            db.session.add(ds)
+            db.session.commit()
+            img = Image(
+                dataset_id=ds.id,
+                filename='suggest.png',
+                filepath='suggest.png',
+                width=240,
+                height=90,
+            )
+            db.session.add(img)
+            db.session.commit()
+            img_id = img.id
+
+        monkeypatch.setattr(label_routes, 'get_image_path', lambda image: 'dummy_path.png')
+        monkeypatch.setattr(label_routes.cv2, 'imread', lambda _: np.zeros((90, 240, 3), dtype=np.uint8))
+        monkeypatch.setattr(label_routes.pipelines, 'get_pipeline', lambda slug, config=None: FakePipe())
+
+        resp = client.post('/label/suggest', json={'image_id': img_id})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['suggested_raw'] == '-38.20'
+        assert data['benchmark_target'] == '3820'
+        assert data['source'] == 'p05_tesseract_ocr'
+
 
 class TestBenchmark:
     def test_benchmark_page(self, client):
@@ -388,6 +483,51 @@ class TestExport:
         resp = client.get(f'/export/labels/{ds_id}')
         assert resp.status_code == 200
         assert resp.get_json() == []
+
+    def test_export_labels_includes_v2_fields(self, client):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.label import Label
+
+        with client.application.app_context():
+            ds = Dataset(name='export_v2_test')
+            db.session.add(ds)
+            db.session.commit()
+            img = Image(
+                dataset_id=ds.id,
+                filename='x.png',
+                filepath='x.png',
+                width=240,
+                height=90,
+            )
+            db.session.add(img)
+            db.session.commit()
+            lbl = Label(
+                image_id=img.id,
+                roi_x=0,
+                roi_y=0,
+                roi_width=240,
+                roi_height=90,
+                ground_truth='.-3820',
+                num_digits=4,
+                display_type='led',
+                labeled_by='json',
+            )
+            db.session.add(lbl)
+            db.session.commit()
+            ds_id = ds.id
+
+        resp = client.get(f'/export/labels/{ds_id}')
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert len(payload) == 1
+        row = payload[0]
+        assert row['ground_truth'] == '.-3820'
+        assert row['ground_truth_raw'] == '.-3820'
+        assert row['benchmark_target'] == '3820'
+        assert row['label_source'] == 'json'
+        assert row['verified'] is False
+        assert 'updated_at' in row
 
 
 class TestYoloTrainRoutes:

@@ -11,6 +11,7 @@ from models.image import Image
 from models.label import Label
 from services.metrics import compare_char_accuracy
 from services.image_service import get_image_path
+from services.label_service import benchmark_target, normalize_and_dedupe_dataset_labels
 import pipelines
 from pipelines.base import ROI
 
@@ -62,6 +63,8 @@ class BenchmarkRunner:
                         except Exception:
                             pass
 
+            normalize_and_dedupe_dataset_labels(run.dataset_id)
+
             # Get labeled images from dataset
             query = (
                 db.session.query(Image, Label)
@@ -108,11 +111,12 @@ class BenchmarkRunner:
                 except Exception as e:
                     # Record errors for all images
                     for img, label in labeled_images:
+                        gt_target = benchmark_target(label.ground_truth)
                         result = BenchmarkResult(
                             run_id=run.id, image_id=img.id, label_id=label.id,
                             pipeline_slug=slug, ground_truth=label.ground_truth,
                             error_message=f'Load failed: {e}',
-                            char_total=len(label.ground_truth),
+                            char_total=len(gt_target),
                         )
                         db.session.add(result)
                         run.processed += 1
@@ -133,8 +137,10 @@ class BenchmarkRunner:
                         )
 
                         pred_result = pipe.predict_timed(image_data, roi)
+                        pred_target = benchmark_target(pred_result.predicted)
+                        gt_target = benchmark_target(label.ground_truth)
                         char_correct, char_total = compare_char_accuracy(
-                            pred_result.predicted, label.ground_truth
+                            pred_target, gt_target
                         )
 
                         br = BenchmarkResult(
@@ -142,7 +148,7 @@ class BenchmarkRunner:
                             pipeline_slug=slug,
                             predicted=pred_result.predicted,
                             ground_truth=label.ground_truth,
-                            is_correct=(pred_result.predicted == label.ground_truth),
+                            is_correct=(pred_target == gt_target),
                             char_correct=char_correct,
                             char_total=char_total,
                             latency_ms=pred_result.latency_ms,
@@ -152,11 +158,12 @@ class BenchmarkRunner:
                         db.session.add(br)
 
                     except Exception as e:
+                        gt_target = benchmark_target(label.ground_truth)
                         br = BenchmarkResult(
                             run_id=run.id, image_id=img.id, label_id=label.id,
                             pipeline_slug=slug, ground_truth=label.ground_truth,
                             error_message=str(e),
-                            char_total=len(label.ground_truth),
+                            char_total=len(gt_target),
                         )
                         db.session.add(br)
 
@@ -171,6 +178,7 @@ class BenchmarkRunner:
                         'image': img.filename,
                         'predicted': br.predicted,
                         'ground_truth': br.ground_truth,
+                        'benchmark_target': benchmark_target(br.ground_truth),
                         'correct': br.is_correct,
                     })
 
