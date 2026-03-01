@@ -3,11 +3,16 @@
  * Expects `metricsData` to be set globally before this script loads.
  */
 (function() {
+    // Set Chart.js global defaults
+    Chart.defaults.color = '#a89ba6';
+    Chart.defaults.borderColor = '#2f2532';
+    Chart.defaults.font.family = "'Space Grotesk', system-ui, sans-serif";
+
     if (typeof metricsData === 'undefined' || !metricsData.pipelines) return;
 
     const slugs = metricsData.pipeline_slugs;
     const COLORS = [
-        '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'
+        '#d94f7a', '#4ac7c7', '#7b8ed5', '#e07653', '#c9a24e', '#9b7dd4', '#34c77b'
     ];
 
     // --- Accuracy bar chart ---
@@ -37,7 +42,6 @@
             options: {
                 responsive: true,
                 scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } } },
-                plugins: { legend: { labels: { color: '#e2e8f0' } } },
             }
         });
     }
@@ -69,7 +73,6 @@
             options: {
                 responsive: true,
                 scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' } } },
-                plugins: { legend: { labels: { color: '#e2e8f0' } } },
             }
         });
     }
@@ -94,7 +97,6 @@
                     x: { title: { display: true, text: 'Mean Latency (ms)' } },
                     y: { title: { display: true, text: 'String Accuracy %' }, beginAtZero: true, max: 100 }
                 },
-                plugins: { legend: { labels: { color: '#e2e8f0' } } },
             }
         });
     }
@@ -126,7 +128,7 @@
                         data: data.map(d => ({ x: d.x, y: d.y })),
                         pointRadius: data.map(d => Math.max(3, (d.v / maxVal) * 18)),
                         backgroundColor: data.map(d => d.x === d.y ?
-                            `rgba(16,185,129,${Math.min(1, d.v / maxVal + 0.2)})` :
+                            `rgba(34,197,94,${Math.min(1, d.v / maxVal + 0.2)})` :
                             `rgba(239,68,68,${Math.min(1, d.v / maxVal + 0.1)})`),
                         pointStyle: 'rect',
                     }]

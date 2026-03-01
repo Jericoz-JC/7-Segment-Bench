@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}7-Segment Bench{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     {% block head %}{% endblock %}
@@ -16,27 +19,31 @@
         </div>
         <ul class="nav-links">
             <li><a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}">
-                <span class="nav-icon">&#9632;</span> Dashboard
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span> <span>Dashboard</span>
             </a></li>
             <li><a href="{{ url_for('upload.index') }}" class="{% if request.blueprint == 'upload' %}active{% endif %}">
-                <span class="nav-icon">&#8679;</span> Upload
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span> <span>Upload</span>
             </a></li>
             <li><a href="{{ url_for('label.index') }}" class="{% if request.blueprint == 'label' %}active{% endif %}">
-                <span class="nav-icon">&#9998;</span> Label
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span> <span>Label</span>
             </a></li>
             <li><a href="{{ url_for('benchmark.index') }}" class="{% if request.blueprint == 'benchmark' %}active{% endif %}">
-                <span class="nav-icon">&#9881;</span> Benchmark
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> <span>Benchmark</span>
             </a></li>
             <li><a href="{{ url_for('results.index') }}" class="{% if request.blueprint == 'results' %}active{% endif %}">
-                <span class="nav-icon">&#9776;</span> Results
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> <span>Results</span>
             </a></li>
             <li><a href="{{ url_for('single_test.index') }}" class="{% if request.blueprint == 'single_test' %}active{% endif %}">
-                <span class="nav-icon">&#9654;</span> Quick Test
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></span> <span>Quick Test</span>
             </a></li>
             <li><a href="{{ url_for('train_yolo.index') }}" class="{% if request.blueprint == 'train_yolo' %}active{% endif %}">
-                <span class="nav-icon">&#9889;</span> YOLO Train
+                <span class="nav-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span>YOLO Train</span>
             </a></li>
         </ul>
+        <div class="sidebar-footer">
+            <span>v1.0</span>
+            <kbd>Ctrl+K</kbd>
+        </div>
     </nav>
 
     <main class="content">
@@ -52,6 +59,213 @@
 
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Command Palette -->
+    <div class="cmd-palette-overlay" id="cmd-palette-overlay">
+        <div class="cmd-palette">
+            <input type="text" class="cmd-palette-input" id="cmd-palette-input" placeholder="Search pages and actions..." autocomplete="off">
+            <div class="cmd-palette-results" id="cmd-palette-results"></div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-overlay" id="shortcuts-overlay">
+        <div class="shortcuts-modal">
+            <h2>Keyboard Shortcuts</h2>
+            <div class="shortcuts-section">
+                <h3>Global</h3>
+                <div class="shortcut-row"><span>Command palette</span> <kbd>Ctrl+K</kbd></div>
+                <div class="shortcut-row"><span>Show shortcuts</span> <kbd>?</kbd></div>
+            </div>
+            <div class="shortcuts-section">
+                <h3>Labeler</h3>
+                <div class="shortcut-row"><span>Next image</span> <kbd>&rarr;</kbd></div>
+                <div class="shortcut-row"><span>Previous image</span> <kbd>&larr;</kbd></div>
+                <div class="shortcut-row"><span>Save &amp; advance</span> <kbd>Enter</kbd></div>
+                <div class="shortcut-row"><span>Save without advancing</span> <kbd>Shift+Enter</kbd></div>
+                <div class="shortcut-row"><span>Delete label</span> <kbd>Delete</kbd></div>
+            </div>
+            <div class="shortcuts-section" style="margin-bottom:0">
+                <div class="shortcut-row"><span style="color:var(--text-muted);font-size:12px">Press <kbd>Esc</kbd> to close</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inline JS utilities: toasts, command palette, shortcuts -->
+    <script>
+    (function() {
+        // --- Toast notifications ---
+        window.showToast = function(message, type, duration) {
+            type = type || 'info';
+            duration = duration || 4000;
+            var container = document.getElementById('toast-container');
+            if (!container) return;
+            var toast = document.createElement('div');
+            toast.className = 'toast toast-' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(function() {
+                toast.classList.add('toast-removing');
+                setTimeout(function() { toast.remove(); }, 200);
+            }, duration);
+        };
+
+        // Convert flash messages to toasts
+        var flashes = document.querySelectorAll('.flash');
+        flashes.forEach(function(el) {
+            var type = el.classList.contains('flash-error') ? 'error' : 'success';
+            showToast(el.textContent.trim(), type);
+        });
+        var flashContainer = document.querySelector('.flash-messages');
+        if (flashContainer) flashContainer.style.display = 'none';
+
+        // --- Command Palette ---
+        var cmdOverlay = document.getElementById('cmd-palette-overlay');
+        var cmdInput = document.getElementById('cmd-palette-input');
+        var cmdResults = document.getElementById('cmd-palette-results');
+
+        var CMD_ITEMS = [
+            { label: 'Dashboard', url: '/', icon: 'grid' },
+            { label: 'Upload Images', url: '/upload', icon: 'upload' },
+            { label: 'Label Images', url: '/label', icon: 'edit' },
+            { label: 'Run Benchmark', url: '/benchmark', icon: 'clock' },
+            { label: 'View Results', url: '/results', icon: 'bar-chart' },
+            { label: 'Quick Test', url: '/test', icon: 'play' },
+            { label: 'YOLO Training', url: '/train', icon: 'zap' },
+        ];
+
+        var cmdSelectedIndex = 0;
+
+        function openCommandPalette() {
+            cmdOverlay.classList.add('open');
+            cmdInput.value = '';
+            cmdSelectedIndex = 0;
+            renderCmdResults('');
+            setTimeout(function() { cmdInput.focus(); }, 50);
+        }
+
+        function closeCommandPalette() {
+            cmdOverlay.classList.remove('open');
+        }
+
+        function fuzzyMatch(query, text) {
+            query = query.toLowerCase();
+            text = text.toLowerCase();
+            if (!query) return true;
+            var qi = 0;
+            for (var i = 0; i < text.length && qi < query.length; i++) {
+                if (text[i] === query[qi]) qi++;
+            }
+            return qi === query.length;
+        }
+
+        function renderCmdResults(query) {
+            var filtered = CMD_ITEMS.filter(function(item) {
+                return fuzzyMatch(query, item.label);
+            });
+            if (cmdSelectedIndex >= filtered.length) cmdSelectedIndex = Math.max(0, filtered.length - 1);
+            if (filtered.length === 0) {
+                cmdResults.innerHTML = '<div class="cmd-palette-empty">No results found</div>';
+                return;
+            }
+            cmdResults.innerHTML = filtered.map(function(item, i) {
+                var cls = 'cmd-palette-item' + (i === cmdSelectedIndex ? ' selected' : '');
+                return '<div class="' + cls + '" data-url="' + item.url + '">' +
+                    '<span class="cmd-palette-item-label">' + item.label + '</span>' +
+                    '</div>';
+            }).join('');
+
+            cmdResults.querySelectorAll('.cmd-palette-item').forEach(function(el) {
+                el.addEventListener('click', function() {
+                    window.location.href = el.dataset.url;
+                });
+                el.addEventListener('mouseenter', function() {
+                    cmdResults.querySelectorAll('.cmd-palette-item').forEach(function(e) { e.classList.remove('selected'); });
+                    el.classList.add('selected');
+                    var items = Array.from(cmdResults.querySelectorAll('.cmd-palette-item'));
+                    cmdSelectedIndex = items.indexOf(el);
+                });
+            });
+        }
+
+        if (cmdInput) {
+            cmdInput.addEventListener('input', function() {
+                cmdSelectedIndex = 0;
+                renderCmdResults(cmdInput.value);
+            });
+            cmdInput.addEventListener('keydown', function(e) {
+                var items = cmdResults.querySelectorAll('.cmd-palette-item');
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    cmdSelectedIndex = Math.min(cmdSelectedIndex + 1, items.length - 1);
+                    items.forEach(function(el, i) { el.classList.toggle('selected', i === cmdSelectedIndex); });
+                    if (items[cmdSelectedIndex]) items[cmdSelectedIndex].scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    cmdSelectedIndex = Math.max(cmdSelectedIndex - 1, 0);
+                    items.forEach(function(el, i) { el.classList.toggle('selected', i === cmdSelectedIndex); });
+                    if (items[cmdSelectedIndex]) items[cmdSelectedIndex].scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (items[cmdSelectedIndex]) {
+                        window.location.href = items[cmdSelectedIndex].dataset.url;
+                    }
+                } else if (e.key === 'Escape') {
+                    closeCommandPalette();
+                }
+            });
+        }
+
+        if (cmdOverlay) {
+            cmdOverlay.addEventListener('click', function(e) {
+                if (e.target === cmdOverlay) closeCommandPalette();
+            });
+        }
+
+        // --- Keyboard Shortcuts ---
+        var shortcutsOverlay = document.getElementById('shortcuts-overlay');
+
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+K: command palette
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                if (cmdOverlay.classList.contains('open')) {
+                    closeCommandPalette();
+                } else {
+                    openCommandPalette();
+                }
+                return;
+            }
+            // Escape: close modals
+            if (e.key === 'Escape') {
+                if (cmdOverlay && cmdOverlay.classList.contains('open')) {
+                    closeCommandPalette();
+                    return;
+                }
+                if (shortcutsOverlay && shortcutsOverlay.classList.contains('open')) {
+                    shortcutsOverlay.classList.remove('open');
+                    return;
+                }
+            }
+            // ?: shortcuts help (not in inputs)
+            if (e.key === '?' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
+                e.preventDefault();
+                if (shortcutsOverlay) {
+                    shortcutsOverlay.classList.toggle('open');
+                }
+            }
+        });
+
+        if (shortcutsOverlay) {
+            shortcutsOverlay.addEventListener('click', function(e) {
+                if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
+            });
+        }
+    })();
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

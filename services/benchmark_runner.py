@@ -3,6 +3,7 @@
 import json
 import threading
 import queue
+import time
 import cv2
 from flask import current_app
 from models import db
@@ -52,6 +53,9 @@ class BenchmarkRunner:
                 self._queue.put(None)
                 return
 
+            # Phase 1: Initializing
+            self._emit({'type': 'phase_change', 'phase': 'initializing'})
+
             selection = run.pipeline_configs.get('__selection', {})
             selected_image_ids = []
             if isinstance(selection, dict):
@@ -64,6 +68,9 @@ class BenchmarkRunner:
                             pass
 
             normalize_and_dedupe_dataset_labels(run.dataset_id)
+
+            # Phase 2: Loading data
+            self._emit({'type': 'phase_change', 'phase': 'loading_data'})
 
             # Get labeled images from dataset
             query = (
@@ -101,9 +108,18 @@ class BenchmarkRunner:
                 'images': len(labeled_images),
             })
 
+            # ETA tracking
+            bench_start_time = time.time()
+            eta_counter = 0
+
             # Run each pipeline sequentially (one at a time for memory)
             for slug in slugs:
+                # Phase 3: Pipeline
+                self._emit({'type': 'phase_change', 'phase': f'pipeline:{slug}'})
                 self._emit({'type': 'pipeline_start', 'pipeline': slug})
+
+                pipeline_processed = 0
+                pipeline_total = len(labeled_images)
 
                 try:
                     pipe = pipelines.get_pipeline(slug, run.pipeline_configs.get(slug))
@@ -168,6 +184,7 @@ class BenchmarkRunner:
                         db.session.add(br)
 
                     run.processed += 1
+                    pipeline_processed += 1
                     db.session.commit()
 
                     self._emit({
@@ -182,6 +199,25 @@ class BenchmarkRunner:
                         'correct': br.is_correct,
                     })
 
+                    # Per-pipeline progress
+                    self._emit({
+                        'type': 'pipeline_progress',
+                        'pipeline': slug,
+                        'pipeline_processed': pipeline_processed,
+                        'pipeline_total': pipeline_total,
+                    })
+
+                    # ETA calculation every 5 images
+                    eta_counter += 1
+                    if eta_counter % 5 == 0 and run.processed > 0:
+                        elapsed = time.time() - bench_start_time
+                        remaining = total - run.processed
+                        seconds_remaining = (elapsed / run.processed) * remaining
+                        self._emit({
+                            'type': 'eta',
+                            'seconds_remaining': round(seconds_remaining, 1),
+                        })
+
                 try:
                     pipe.unload()
                 except Exception:
@@ -189,11 +225,16 @@ class BenchmarkRunner:
 
                 self._emit({'type': 'pipeline_done', 'pipeline': slug})
 
-            # Finalize
+            # Phase 4: Computing metrics
+            self._emit({'type': 'phase_change', 'phase': 'computing_metrics'})
+
             from services.metrics import compute_run_metrics
+
+            # Phase 5: Finalizing
             run.status = 'completed'
             run.summary = compute_run_metrics(run.id)
             db.session.commit()
 
+            self._emit({'type': 'phase_change', 'phase': 'finalizing'})
             self._emit({'type': 'completed', 'run_id': run.id})
             self._queue.put(None)

@@ -76,6 +76,40 @@
 
     <div class="card" id="progress-card" style="display:none">
         <h2>Progress</h2>
+
+        <!-- Stepper -->
+        <div class="bench-stepper" id="bench-stepper">
+            <div class="bench-step" id="step-init" data-step="1">
+                <span class="bench-step-num">1</span>
+                <span>Initialize</span>
+            </div>
+            <div class="bench-step-connector" id="conn-1-2"></div>
+            <div class="bench-step" id="step-pipelines" data-step="2">
+                <span class="bench-step-num">2</span>
+                <span>Run Pipelines</span>
+            </div>
+            <div class="bench-step-connector" id="conn-2-3"></div>
+            <div class="bench-step" id="step-metrics" data-step="3">
+                <span class="bench-step-num">3</span>
+                <span>Compute Metrics</span>
+            </div>
+            <div class="bench-step-connector" id="conn-3-4"></div>
+            <div class="bench-step" id="step-done" data-step="4">
+                <span class="bench-step-num">4</span>
+                <span>Done</span>
+            </div>
+        </div>
+
+        <!-- Per-pipeline progress cards -->
+        <div class="pipeline-progress-cards" id="pipeline-progress-cards"></div>
+
+        <!-- Meta row -->
+        <div class="bench-meta-row" id="bench-meta-row">
+            <span><span class="bench-meta-label">Progress:</span> <span id="bench-meta-count">0 / 0</span></span>
+            <span><span class="bench-meta-label">Elapsed:</span> <span id="bench-meta-elapsed">00:00</span></span>
+            <span><span class="bench-meta-label">ETA:</span> <span id="bench-meta-eta">--</span></span>
+        </div>
+
         <div class="progress-bar-container">
             <div class="progress-bar"><div class="progress-fill" id="bench-fill"></div></div>
             <span id="bench-pct">0%</span>
@@ -104,7 +138,11 @@
             </tbody>
         </table>
         {% else %}
-        <p class="empty-state">No benchmark runs yet.</p>
+        <div class="empty-state-panel">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div class="empty-title">No benchmark runs yet</div>
+            <div class="empty-desc">Configure a benchmark above and click Start to begin evaluating pipelines.</div>
+        </div>
         {% endif %}
     </div>
 </div>

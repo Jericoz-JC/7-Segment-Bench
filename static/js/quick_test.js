@@ -340,7 +340,7 @@
             const y = e.clientY - r.top;
             const ctx = testCanvas.getContext('2d');
             ctx.drawImage(testCanvas._img, 0, 0, testCanvas.width, testCanvas.height);
-            ctx.strokeStyle = '#00ff88';
+            ctx.strokeStyle = '#34c77b';
             ctx.lineWidth = 2;
             ctx.strokeRect(startX, startY, x - startX, y - startY);
         });

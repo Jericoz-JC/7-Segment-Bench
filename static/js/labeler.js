@@ -115,18 +115,18 @@
         ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
 
         existingLabels.forEach(l => {
-            ctx.strokeStyle = '#00ff88';
+            ctx.strokeStyle = '#34c77b';
             ctx.lineWidth = 2;
             ctx.strokeRect(l.roi_x * scale, l.roi_y * scale, l.roi_width * scale, l.roi_height * scale);
-            ctx.fillStyle = 'rgba(0,255,136,0.15)';
+            ctx.fillStyle = 'rgba(52,199,123,0.15)';
             ctx.fillRect(l.roi_x * scale, l.roi_y * scale, l.roi_width * scale, l.roi_height * scale);
-            ctx.fillStyle = '#00ff88';
+            ctx.fillStyle = '#34c77b';
             ctx.font = '14px monospace';
             ctx.fillText(l.ground_truth_raw || l.ground_truth, l.roi_x * scale + 4, l.roi_y * scale - 4);
         });
 
         if (roi) {
-            ctx.strokeStyle = '#ffaa00';
+            ctx.strokeStyle = '#d94f7a';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.strokeRect(roi.x * scale, roi.y * scale, roi.width * scale, roi.height * scale);
@@ -334,7 +334,7 @@
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         drawCanvas();
-        ctx.strokeStyle = '#ffaa00';
+        ctx.strokeStyle = '#d94f7a';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(startX, startY, x - startX, y - startY);

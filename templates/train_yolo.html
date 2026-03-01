@@ -146,7 +146,11 @@
         </tbody>
     </table>
     {% else %}
-    <p class="empty-state">No trained models yet. Start a YOLO run above.</p>
+    <div class="empty-state-panel">
+        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <div class="empty-title">No trained models</div>
+        <div class="empty-desc">Configure training parameters above and start a YOLO training run to create your first model.</div>
+    </div>
     {% endif %}
 </div>
 {% endblock %}
