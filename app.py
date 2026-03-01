@@ -2,7 +2,46 @@
 
 import os
 from flask import Flask, send_from_directory
+from sqlalchemy import inspect
 from config import config_map
+
+REQUIRED_TABLES = {
+    'datasets',
+    'images',
+    'labels',
+    'benchmark_runs',
+    'benchmark_results',
+    'api_keys',
+    'trained_models',
+}
+
+
+def _ensure_sqlite_db_dir(database_uri: str):
+    if not database_uri.startswith('sqlite:///'):
+        return
+    raw_path = database_uri.replace('sqlite:///', '', 1).strip()
+    if not raw_path or raw_path == ':memory:':
+        return
+    db_dir = os.path.dirname(os.path.abspath(raw_path))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
+
+def _ensure_schema(db) -> bool:
+    # Import models so SQLAlchemy metadata includes every table.
+    import models.dataset  # noqa: F401
+    import models.image  # noqa: F401
+    import models.label  # noqa: F401
+    import models.benchmark  # noqa: F401
+
+    db.create_all()
+    existing = set(inspect(db.engine).get_table_names())
+    missing = REQUIRED_TABLES - existing
+    if missing:
+        db.create_all()
+        existing = set(inspect(db.engine).get_table_names())
+        missing = REQUIRED_TABLES - existing
+    return not missing
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -11,23 +50,24 @@ def create_app(config_name: str | None = None) -> Flask:
 
     app = Flask(__name__)
     app.config.from_object(config_map[config_name])
+    # Re-read DATABASE_URL at runtime in case environment changed after module import.
+    runtime_db_url = os.environ.get('DATABASE_URL')
+    if runtime_db_url:
+        app.config['SQLALCHEMY_DATABASE_URI'] = runtime_db_url
 
     # Ensure directories exist
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
     os.makedirs(os.path.join(app.instance_path), exist_ok=True)
+    _ensure_sqlite_db_dir(app.config['SQLALCHEMY_DATABASE_URI'])
 
     # Initialize database
     from models import db
     db.init_app(app)
+    schema_ready = False
 
     with app.app_context():
-        # Import models so tables are created
-        import models.dataset
-        import models.image
-        import models.label
-        import models.benchmark
-        db.create_all()
+        schema_ready = _ensure_schema(db)
 
     # Register blueprints
     from routes.dashboard import bp as dashboard_bp
@@ -58,6 +98,14 @@ def create_app(config_name: str | None = None) -> Flask:
     @app.route('/data/thumbnails/<path:filename>')
     def serve_thumbnail(filename):
         return send_from_directory(app.config['THUMBNAIL_FOLDER'], filename)
+
+    @app.before_request
+    def ensure_schema_ready():
+        nonlocal schema_ready
+        if schema_ready:
+            return
+        with app.app_context():
+            schema_ready = _ensure_schema(db)
 
     return app
 
