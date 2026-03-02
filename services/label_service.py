@@ -12,6 +12,18 @@ from models.label import Label
 _GT_ALLOWED_CHARS = set("0123456789-.")
 
 
+def _to_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _normalize_display_type(value: str) -> str:
+    display_type = str(value or "led").strip().lower()
+    return display_type if display_type in {"led", "lcd"} else "led"
+
+
 def sanitize_ground_truth_raw(text: str) -> str:
     """Return compact raw ground truth with only supported symbols."""
     compact = re.sub(r"\s+", "", str(text or "").strip())
@@ -146,15 +158,20 @@ def import_labels_csv(dataset_id: int, content: str) -> int:
         except ValueError:
             continue
 
+        roi_x = _to_int(row.get('roi_x', 0), 0)
+        roi_y = _to_int(row.get('roi_y', 0), 0)
+        roi_width = _to_int(row.get('roi_width', 0), 0) or image.width
+        roi_height = _to_int(row.get('roi_height', 0), 0) or image.height
+
         label = Label(
             image_id=image.id,
-            roi_x=int(row.get('roi_x', 0)),
-            roi_y=int(row.get('roi_y', 0)),
-            roi_width=int(row.get('roi_width', 0)) or image.width,
-            roi_height=int(row.get('roi_height', 0)) or image.height,
+            roi_x=roi_x,
+            roi_y=roi_y,
+            roi_width=roi_width,
+            roi_height=roi_height,
             ground_truth=ground_truth,
             num_digits=len(target),
-            display_type=row.get('display_type', 'led').strip() or 'led',
+            display_type=_normalize_display_type(row.get('display_type', 'led')),
             labeled_by='csv',
         )
         db.session.add(label)
@@ -191,15 +208,20 @@ def import_labels_json(dataset_id: int, content: str) -> int:
         except ValueError:
             continue
 
+        roi_x = _to_int(item.get('roi_x', 0), 0)
+        roi_y = _to_int(item.get('roi_y', 0), 0)
+        roi_width = _to_int(item.get('roi_width', 0), 0) or image.width
+        roi_height = _to_int(item.get('roi_height', 0), 0) or image.height
+
         label = Label(
             image_id=image.id,
-            roi_x=int(item.get('roi_x', 0)),
-            roi_y=int(item.get('roi_y', 0)),
-            roi_width=int(item.get('roi_width', 0)) or image.width,
-            roi_height=int(item.get('roi_height', 0)) or image.height,
+            roi_x=roi_x,
+            roi_y=roi_y,
+            roi_width=roi_width,
+            roi_height=roi_height,
             ground_truth=ground_truth,
             num_digits=len(target),
-            display_type=item.get('display_type', 'led'),
+            display_type=_normalize_display_type(item.get('display_type', 'led')),
             labeled_by='json',
         )
         db.session.add(label)

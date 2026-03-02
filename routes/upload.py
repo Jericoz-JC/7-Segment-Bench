@@ -61,7 +61,13 @@ def upload_images():
         except Exception as e:
             results.append({'filename': f.filename, 'error': str(e)})
 
-    return jsonify({'uploaded': results})
+    uploaded_count = sum(1 for item in results if not item.get('error'))
+    failed_count = len(results) - uploaded_count
+    return jsonify({
+        'uploaded': results,
+        'uploaded_count': uploaded_count,
+        'failed_count': failed_count,
+    })
 
 
 @bp.route('/external-datasets')

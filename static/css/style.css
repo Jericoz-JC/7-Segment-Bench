@@ -434,6 +434,7 @@ input:focus, select:focus, textarea:focus {
 /* === Messages === */
 .form-msg { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
 .form-msg.success { background: var(--success-subtle); color: var(--success); }
+.form-msg.warning { background: var(--warning-subtle); color: var(--warning); }
 .form-msg.error { background: var(--danger-subtle); color: var(--danger); }
 .card-subtext {
     color: var(--text-secondary);
@@ -536,6 +537,7 @@ input:focus, select:focus, textarea:focus {
 
 /* === Drop Zone === */
 .drop-zone {
+    position: relative;
     border: 2px dashed var(--border);
     border-radius: var(--radius);
     padding: 36px;

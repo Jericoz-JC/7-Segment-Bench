@@ -54,15 +54,22 @@
 document.getElementById('import-form').addEventListener('submit', async e => {
     e.preventDefault();
     const form = new FormData(e.target);
-    const resp = await fetch('/label/import', { method: 'POST', body: form });
-    const data = await resp.json();
     const msg = document.getElementById('import-msg');
-    if (data.error) {
-        msg.textContent = data.error;
-        msg.className = 'form-msg error';
-    } else {
-        msg.textContent = `Imported ${data.imported} labels`;
+    try {
+        const resp = await fetch('/label/import', { method: 'POST', body: form });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            msg.textContent = data.error || 'Import failed';
+            msg.className = 'form-msg error';
+            return;
+        }
+        const normalized = Number(data.normalized || 0);
+        const deleted = Number(data.deleted || 0);
+        msg.textContent = `Imported ${data.imported} labels${normalized || deleted ? `, normalized ${normalized}, removed ${deleted}` : ''}`;
         msg.className = 'form-msg success';
+    } catch (err) {
+        msg.textContent = 'Import request failed';
+        msg.className = 'form-msg error';
     }
 });
 </script>

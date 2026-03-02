@@ -72,6 +72,85 @@ class TestUpload:
         resp = client.post('/upload/dataset', data={'name': 'dup'})
         assert resp.status_code == 400
 
+    def test_upload_images_requires_dataset_id(self, client):
+        resp = client.post('/upload/images', data={}, content_type='multipart/form-data')
+        assert resp.status_code == 400
+        assert resp.get_json()['error'] == 'Dataset ID required'
+
+    def test_upload_images_requires_files(self, client):
+        from models.dataset import Dataset
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_requires_files')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        resp = client.post('/upload/images', data={'dataset_id': str(ds_id)})
+        assert resp.status_code == 400
+        assert resp.get_json()['error'] == 'No files uploaded'
+
+    def test_upload_images_success(self, client, tmp_path):
+        from PIL import Image as PILImage
+        from models.dataset import Dataset
+
+        upload_dir = tmp_path / 'uploads'
+        thumb_dir = tmp_path / 'thumbnails'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        client.application.config['UPLOAD_FOLDER'] = str(upload_dir)
+        client.application.config['THUMBNAIL_FOLDER'] = str(thumb_dir)
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_success_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        image_buf = io.BytesIO()
+        PILImage.new('RGB', (24, 24), color='white').save(image_buf, format='PNG')
+        image_buf.seek(0)
+
+        resp = client.post(
+            '/upload/images',
+            data={
+                'dataset_id': str(ds_id),
+                'files': (image_buf, 'sample.png'),
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload['uploaded_count'] == 1
+        assert payload['failed_count'] == 0
+        assert len(payload['uploaded']) == 1
+        assert payload['uploaded'][0]['filename'] == 'sample.png'
+        assert 'id' in payload['uploaded'][0]
+
+    def test_upload_images_rejects_invalid_extension(self, client):
+        from models.dataset import Dataset
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_invalid_ext_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        text_buf = io.BytesIO(b'not-an-image')
+        resp = client.post(
+            '/upload/images',
+            data={
+                'dataset_id': str(ds_id),
+                'files': (text_buf, 'notes.txt'),
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload['uploaded_count'] == 0
+        assert payload['failed_count'] == 1
+        assert payload['uploaded'][0]['error'] == 'Invalid file type'
+
     def test_external_dataset_install_rejects_unknown_key(self, client):
         resp = client.post('/upload/external-datasets/install', json={
             'dataset_key': 'does-not-exist',
@@ -290,6 +369,34 @@ class TestLabel:
         assert data['suggested_raw'] == '-38.20'
         assert data['benchmark_target'] == '3820'
         assert data['source'] == 'p05_tesseract_ocr'
+
+    def test_import_labels_requires_existing_dataset(self, client):
+        csv_buf = io.BytesIO(b'filename,ground_truth\nmissing.png,1234\n')
+        resp = client.post(
+            '/label/import',
+            data={'dataset_id': '999999', 'file': (csv_buf, 'labels.csv')},
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 404
+        assert 'not found' in resp.get_json()['error']
+
+    def test_import_labels_rejects_invalid_json(self, client):
+        from models.dataset import Dataset
+
+        with client.application.app_context():
+            ds = Dataset(name='import_invalid_json_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        bad_json = io.BytesIO(b'{not valid json}')
+        resp = client.post(
+            '/label/import',
+            data={'dataset_id': str(ds_id), 'file': (bad_json, 'labels.json')},
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 400
+        assert 'Invalid label file' in resp.get_json()['error']
 
 
 class TestBenchmark:

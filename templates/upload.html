@@ -118,6 +118,8 @@ const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const fileList = document.getElementById('file-list');
 const uploadBtn = document.getElementById('upload-btn');
+const uploadDataset = document.getElementById('upload-dataset');
+const uploadResults = document.getElementById('upload-results');
 const externalMsg = document.getElementById('external-dataset-msg');
 let selectedFiles = [];
 const jobPollers = new Map();
@@ -131,11 +133,21 @@ dropZone.addEventListener('drop', e => {
     handleFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
+uploadDataset.addEventListener('change', updateUploadButtonState);
+
+function updateUploadButtonState() {
+    uploadBtn.disabled = selectedFiles.length === 0 || !uploadDataset.value;
+}
+
+function showUploadMessage(message, type = 'error') {
+    uploadResults.innerHTML = `<div class="form-msg ${type}">${message}</div>`;
+}
 
 function handleFiles(files) {
     selectedFiles = Array.from(files);
     fileList.innerHTML = selectedFiles.map(f => `<div class="file-item">${f.name} (${(f.size/1024).toFixed(1)} KB)</div>`).join('');
-    uploadBtn.disabled = selectedFiles.length === 0;
+    uploadResults.innerHTML = '';
+    updateUploadButtonState();
 }
 
 document.getElementById('dataset-form').addEventListener('submit', async e => {
@@ -154,14 +166,23 @@ document.getElementById('dataset-form').addEventListener('submit', async e => {
         const opt = new Option(`${data.name} (0 imgs)`, data.id);
         sel.add(opt);
         sel.value = data.id;
+        updateUploadButtonState();
         e.target.reset();
     }
 });
 
 document.getElementById('upload-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const datasetId = document.getElementById('upload-dataset').value;
-    if (!datasetId || selectedFiles.length === 0) return;
+    const datasetId = uploadDataset.value;
+    if (!datasetId) {
+        showUploadMessage('Select a dataset before uploading.', 'error');
+        uploadDataset.focus();
+        return;
+    }
+    if (selectedFiles.length === 0) {
+        showUploadMessage('Add at least one image before uploading.', 'error');
+        return;
+    }
 
     const form = new FormData();
     form.append('dataset_id', datasetId);
@@ -171,19 +192,38 @@ document.getElementById('upload-form').addEventListener('submit', async e => {
     prog.style.display = 'block';
     document.getElementById('upload-status').textContent = 'Uploading...';
 
-    const resp = await fetch('/upload/images', { method: 'POST', body: form });
-    const data = await resp.json();
+    let uploadOk = false;
+    try {
+        const resp = await fetch('/upload/images', { method: 'POST', body: form });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            showUploadMessage(data.error || 'Upload failed.', 'error');
+            return;
+        }
 
-    const results = document.getElementById('upload-results');
-    if (data.uploaded) {
-        const ok = data.uploaded.filter(r => !r.error).length;
-        const fail = data.uploaded.filter(r => r.error).length;
-        results.innerHTML = `<div class="form-msg success">${ok} uploaded${fail ? `, ${fail} failed` : ''}</div>`;
+        if (data.uploaded) {
+            const ok = data.uploaded.filter(r => !r.error).length;
+            const fail = data.uploaded.filter(r => r.error).length;
+            if (ok > 0) {
+                showUploadMessage(`${ok} uploaded${fail ? `, ${fail} failed` : ''}`, fail ? 'warning' : 'success');
+                uploadOk = true;
+            } else {
+                showUploadMessage(`Upload failed for ${fail} file(s).`, 'error');
+            }
+        } else {
+            showUploadMessage('Upload failed: invalid server response.', 'error');
+        }
+    } catch (err) {
+        showUploadMessage('Upload request failed. Check connection and try again.', 'error');
+    } finally {
+        prog.style.display = 'none';
     }
-    prog.style.display = 'none';
-    selectedFiles = [];
-    fileList.innerHTML = '';
-    uploadBtn.disabled = true;
+
+    if (uploadOk) {
+        selectedFiles = [];
+        fileList.innerHTML = '';
+        updateUploadButtonState();
+    }
 });
 
 function showExternalMessage(message, type = 'success') {

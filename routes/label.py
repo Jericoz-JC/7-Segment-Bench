@@ -115,22 +115,34 @@ def import_labels():
     dataset_id = request.form.get('dataset_id', type=int)
     if not dataset_id:
         return jsonify({'error': 'Dataset ID required'}), 400
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'error': f'Dataset {dataset_id} not found'}), 404
 
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    filename = file.filename.lower()
-    content = file.read().decode('utf-8')
+    filename = str(file.filename or '').lower()
+    if not filename:
+        return jsonify({'error': 'Filename is required'}), 400
 
-    if filename.endswith('.csv'):
-        count = import_labels_csv(dataset_id, content)
-    elif filename.endswith('.json'):
-        count = import_labels_json(dataset_id, content)
-    else:
-        return jsonify({'error': 'Only CSV and JSON supported'}), 400
+    try:
+        content = file.read().decode('utf-8')
+    except UnicodeDecodeError:
+        return jsonify({'error': 'Label file must be UTF-8 text'}), 400
 
-    backfill = normalize_and_dedupe_dataset_labels(dataset_id)
+    try:
+        if filename.endswith('.csv'):
+            count = import_labels_csv(dataset_id, content)
+        elif filename.endswith('.json'):
+            count = import_labels_json(dataset_id, content)
+        else:
+            return jsonify({'error': 'Only CSV and JSON supported'}), 400
+    except ValueError as e:
+        return jsonify({'error': f'Invalid label file: {e}'}), 400
+
+    backfill = normalize_and_dedupe_dataset_labels(dataset.id)
     return jsonify({'imported': count, **backfill})
 
 
