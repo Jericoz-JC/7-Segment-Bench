@@ -297,6 +297,42 @@ class TestBenchmark:
         resp = client.get('/benchmark/')
         assert resp.status_code == 200
 
+    def test_progress_stream_snapshot_without_runner(self, client):
+        from models.dataset import Dataset
+        from models.benchmark import BenchmarkRun
+
+        with client.application.app_context():
+            ds = Dataset(name='bench_stream_ds')
+            db.session.add(ds)
+            db.session.commit()
+            run = BenchmarkRun(
+                name='bench_stream_run',
+                dataset_id=ds.id,
+                status='pending',
+                processed=0,
+                total=0,
+            )
+            db.session.add(run)
+            db.session.commit()
+            run_id = run.id
+
+        resp = client.get(f'/benchmark/progress/{run_id}', buffered=False)
+        assert resp.status_code == 200
+        assert resp.mimetype == 'text/event-stream'
+        first_chunk = next(iter(resp.response)).decode('utf-8')
+        assert '"type": "status"' in first_chunk
+        assert '"status": "pending"' in first_chunk
+        assert '"processed": 0' in first_chunk
+        assert '"total": 0' in first_chunk
+
+    def test_progress_stream_missing_run_emits_error_event(self, client):
+        resp = client.get('/benchmark/progress/999999', buffered=False)
+        assert resp.status_code == 200
+        assert resp.mimetype == 'text/event-stream'
+        first_chunk = next(iter(resp.response)).decode('utf-8')
+        assert '"type": "error"' in first_chunk
+        assert '"message": "Run not found"' in first_chunk
+
 
 class TestResults:
     def test_results_page(self, client):

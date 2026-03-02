@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, request, jsonify, Response
+import json
+from flask import Blueprint, render_template, request, jsonify, Response, stream_with_context
 from models import db
 from models.dataset import Dataset
 from models.benchmark import BenchmarkRun
@@ -61,20 +62,28 @@ def start_benchmark():
 @bp.route('/progress/<int:run_id>')
 def progress(run_id):
     """SSE endpoint for benchmark progress."""
-    def event_stream():
-        run = BenchmarkRun.query.get(run_id)
-        if not run:
-            yield f'data: {{"error": "Run not found"}}\n\n'
-            return
+    runner = _runners.get(run_id)
+    run = BenchmarkRun.query.get(run_id)
 
-        runner = _runners.get(run_id)
+    def event_stream():
         if runner and runner.run_id == run_id:
             for event in runner.events():
                 yield f'data: {event}\n\n'
-        else:
-            yield f'data: {{"status": "{run.status}", "processed": {run.processed}, "total": {run.total}}}\n\n'
+            return
 
-    return Response(event_stream(), mimetype='text/event-stream',
+        if not run:
+            yield f'data: {json.dumps({"type": "error", "message": "Run not found"})}\n\n'
+            return
+
+        payload = {
+            'type': 'status',
+            'status': run.status,
+            'processed': run.processed,
+            'total': run.total,
+        }
+        yield f'data: {json.dumps(payload)}\n\n'
+
+    return Response(stream_with_context(event_stream()), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
