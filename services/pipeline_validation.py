@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import subprocess
+from services.tesseract_runtime import resolve_tesseract_cmd
 
 
 def get_tesseract_version_info() -> dict:
     """Return runtime status for `tesseract --version`."""
+    cmd = resolve_tesseract_cmd()
+    if not cmd:
+        return {
+            'ok': False,
+            'version': '',
+            'error': 'tesseract executable not found in PATH',
+        }
+
     try:
         proc = subprocess.run(
-            ['tesseract', '--version'],
+            [cmd, '--version'],
             capture_output=True,
             text=True,
             timeout=10,

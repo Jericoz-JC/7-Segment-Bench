@@ -5,6 +5,7 @@ import numpy as np
 from pipelines import register
 from pipelines.base import BasePipeline, PipelineResult, ROI
 from pipelines.preprocessing import crop_roi, to_grayscale, resize_height, invert_if_dark, apply_morphology
+from services.tesseract_runtime import resolve_tesseract_cmd
 
 
 @register
@@ -22,6 +23,9 @@ class TesseractOCRPipeline(BasePipeline):
     def load(self):
         super().load()
         import pytesseract
+        cmd = resolve_tesseract_cmd()
+        if cmd:
+            pytesseract.pytesseract.tesseract_cmd = cmd
         self._pytesseract = pytesseract
 
     def unload(self):

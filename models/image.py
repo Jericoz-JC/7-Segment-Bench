@@ -19,4 +19,10 @@ class Image(db.Model):
 
     labels = db.relationship('Label', backref='image', lazy='dynamic',
                              cascade='all, delete-orphan')
+    draft_annotation = db.relationship(
+        'DraftAnnotation',
+        backref='image',
+        uselist=False,
+        cascade='all, delete-orphan',
+    )
     benchmark_results = db.relationship('BenchmarkResult', backref='image', lazy='dynamic')

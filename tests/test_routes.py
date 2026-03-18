@@ -151,6 +151,186 @@ class TestUpload:
         assert payload['failed_count'] == 1
         assert payload['uploaded'][0]['error'] == 'Invalid file type'
 
+    def test_upload_unlabeled_batch_creates_drafts_and_manifest(self, client, tmp_path):
+        from PIL import Image as PILImage
+        from models.dataset import Dataset
+        from models.draft_annotation import DraftAnnotation
+
+        upload_dir = tmp_path / 'uploads'
+        thumb_dir = tmp_path / 'thumbnails'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        client.application.config['UPLOAD_FOLDER'] = str(upload_dir)
+        client.application.config['THUMBNAIL_FOLDER'] = str(thumb_dir)
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_unlabeled_batch_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        image_a = io.BytesIO()
+        PILImage.new('RGB', (24, 24), color='white').save(image_a, format='PNG')
+        image_a.seek(0)
+        image_b = io.BytesIO()
+        PILImage.new('RGB', (32, 20), color='black').save(image_b, format='JPEG')
+        image_b.seek(0)
+
+        resp = client.post(
+            '/upload/unlabeled-batch',
+            data={
+                'dataset_id': str(ds_id),
+                'display_type': 'lcd',
+                'files': [
+                    (image_a, 'sample_a.png'),
+                    (image_b, 'sample_b.jpg'),
+                ],
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload['uploaded_count'] == 2
+        assert payload['failed_count'] == 0
+        assert payload['display_type'] == 'lcd'
+        assert payload['manifest_filename'] == 'upload_unlabeled_batch_ds_unlabeled_manifest.json'
+        assert payload['dataset']['created'] is False
+        assert payload['label_url'].endswith(f'/label/dataset/{ds_id}')
+        assert len(payload['manifest']) == 2
+        assert payload['manifest'][0]['filename'] == 'sample_a.png'
+        assert payload['manifest'][0]['roi_x'] == 0
+        assert payload['manifest'][0]['roi_y'] == 0
+        assert payload['manifest'][0]['display_type'] == 'lcd'
+
+        with client.application.app_context():
+            drafts = DraftAnnotation.query.all()
+            assert len(drafts) == 2
+            assert all(d.display_type == 'lcd' for d in drafts)
+            assert sorted((d.roi_width, d.roi_height) for d in drafts) == [(24, 24), (32, 20)]
+
+    def test_upload_unlabeled_batch_can_create_new_dataset(self, client, tmp_path):
+        from PIL import Image as PILImage
+        from models.dataset import Dataset
+        from models.draft_annotation import DraftAnnotation
+
+        upload_dir = tmp_path / 'uploads'
+        thumb_dir = tmp_path / 'thumbnails'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        client.application.config['UPLOAD_FOLDER'] = str(upload_dir)
+        client.application.config['THUMBNAIL_FOLDER'] = str(thumb_dir)
+
+        image_buf = io.BytesIO()
+        PILImage.new('RGB', (40, 18), color='white').save(image_buf, format='PNG')
+        image_buf.seek(0)
+
+        resp = client.post(
+            '/upload/unlabeled-batch',
+            data={
+                'name': 'inline_create_ds',
+                'description': 'Created during upload',
+                'lighting_tag': 'bright',
+                'display_type': 'led',
+                'files': (image_buf, 'inline.png'),
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload['uploaded_count'] == 1
+        assert payload['failed_count'] == 0
+        assert payload['dataset']['name'] == 'inline_create_ds'
+        assert payload['dataset']['created'] is True
+        assert payload['dataset']['image_count'] == 1
+        assert payload['label_url'].endswith(f"/label/dataset/{payload['dataset']['id']}")
+
+        with client.application.app_context():
+            ds = Dataset.query.filter_by(name='inline_create_ds').first()
+            assert ds is not None
+            assert ds.description == 'Created during upload'
+            assert ds.lighting_tag == 'bright'
+            drafts = DraftAnnotation.query.all()
+            assert len(drafts) == 1
+            assert drafts[0].display_type == 'led'
+            assert drafts[0].roi_width == 40
+            assert drafts[0].roi_height == 18
+
+    def test_upload_unlabeled_batch_partial_failure_reports_per_file_errors(self, client, tmp_path):
+        from PIL import Image as PILImage
+        from models.dataset import Dataset
+
+        upload_dir = tmp_path / 'uploads'
+        thumb_dir = tmp_path / 'thumbnails'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        client.application.config['UPLOAD_FOLDER'] = str(upload_dir)
+        client.application.config['THUMBNAIL_FOLDER'] = str(thumb_dir)
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_partial_failure_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        image_buf = io.BytesIO()
+        PILImage.new('RGB', (20, 20), color='white').save(image_buf, format='JPEG')
+        image_buf.seek(0)
+        bad_buf = io.BytesIO(b'not-an-image')
+
+        resp = client.post(
+            '/upload/unlabeled-batch',
+            data={
+                'dataset_id': str(ds_id),
+                'display_type': 'lcd',
+                'files': [
+                    (image_buf, 'good.jpg'),
+                    (bad_buf, 'bad.txt'),
+                ],
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload['uploaded_count'] == 1
+        assert payload['failed_count'] == 1
+        assert any(row['filename'] == 'good.jpg' and 'id' in row for row in payload['uploaded'])
+        assert any(row['filename'] == 'bad.txt' and row['error'] == 'Unsupported file type: .txt' for row in payload['uploaded'])
+        assert len(payload['manifest']) == 1
+
+    def test_upload_unlabeled_batch_requires_display_type(self, client):
+        from models.dataset import Dataset
+
+        with client.application.app_context():
+            ds = Dataset(name='upload_unlabeled_missing_type_ds')
+            db.session.add(ds)
+            db.session.commit()
+            ds_id = ds.id
+
+        image_buf = io.BytesIO(b'not-used')
+        resp = client.post(
+            '/upload/unlabeled-batch',
+            data={
+                'dataset_id': str(ds_id),
+                'files': (image_buf, 'sample.png'),
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 400
+        assert 'display_type must be either led or lcd' in resp.get_json()['error']
+
+    def test_upload_unlabeled_batch_requires_dataset_or_name(self, client):
+        image_buf = io.BytesIO(b'not-used')
+        resp = client.post(
+            '/upload/unlabeled-batch',
+            data={
+                'display_type': 'lcd',
+                'files': (image_buf, 'sample.png'),
+            },
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()['error'] == 'Select an existing dataset or enter a new dataset name'
+
     def test_external_dataset_install_rejects_unknown_key(self, client):
         resp = client.post('/upload/external-datasets/install', json={
             'dataset_key': 'does-not-exist',
@@ -370,6 +550,44 @@ class TestLabel:
         assert data['benchmark_target'] == '3820'
         assert data['source'] == 'p05_tesseract_ocr'
 
+    def test_get_draft_annotation_endpoint(self, client):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.draft_annotation import DraftAnnotation
+
+        with client.application.app_context():
+            ds = Dataset(name='test_draft_endpoint_ds')
+            db.session.add(ds)
+            db.session.commit()
+            img = Image(
+                dataset_id=ds.id,
+                filename='draft.png',
+                filepath='draft.png',
+                width=240,
+                height=90,
+            )
+            db.session.add(img)
+            db.session.commit()
+            draft = DraftAnnotation(
+                image_id=img.id,
+                roi_x=0,
+                roi_y=0,
+                roi_width=240,
+                roi_height=90,
+                display_type='lcd',
+            )
+            db.session.add(draft)
+            db.session.commit()
+            img_id = img.id
+
+        resp = client.get(f'/label/image/{img_id}/draft')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['image_id'] == img_id
+        assert data['roi_width'] == 240
+        assert data['roi_height'] == 90
+        assert data['display_type'] == 'lcd'
+
     def test_import_labels_requires_existing_dataset(self, client):
         csv_buf = io.BytesIO(b'filename,ground_truth\nmissing.png,1234\n')
         resp = client.post(
@@ -439,6 +657,44 @@ class TestBenchmark:
         first_chunk = next(iter(resp.response)).decode('utf-8')
         assert '"type": "error"' in first_chunk
         assert '"message": "Run not found"' in first_chunk
+
+    def test_run_batch_ignores_draft_only_images(self, client):
+        from models.dataset import Dataset
+        from models.image import Image
+        from models.draft_annotation import DraftAnnotation
+
+        with client.application.app_context():
+            ds = Dataset(name='draft_only_batch_ds')
+            db.session.add(ds)
+            db.session.commit()
+            img = Image(
+                dataset_id=ds.id,
+                filename='draft-only.png',
+                filepath='draft-only.png',
+                width=200,
+                height=80,
+            )
+            db.session.add(img)
+            db.session.commit()
+            draft = DraftAnnotation(
+                image_id=img.id,
+                roi_x=0,
+                roi_y=0,
+                roi_width=200,
+                roi_height=80,
+                display_type='lcd',
+            )
+            db.session.add(draft)
+            db.session.commit()
+            ds_id = ds.id
+
+        resp = client.post('/test/run-batch', json={
+            'dataset_id': ds_id,
+            'pipeline_slugs': ['p01_global_threshold'],
+            'sample_size': 10,
+        })
+        assert resp.status_code == 400
+        assert resp.get_json()['error'] == 'Selected dataset has no labeled images'
 
 
 class TestResults:

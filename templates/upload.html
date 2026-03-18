@@ -1,91 +1,253 @@
+
 {% extends "base.html" %}
 {% block title %}Upload - 7-Seg Bench{% endblock %}
-{% block content %}
-<div class="page-header">
-    <h1>Upload Images</h1>
-</div>
 
-<div class="card-grid">
-    <div class="card">
-        <h2>Create Dataset</h2>
-        <form id="dataset-form" class="form-stack">
-            <div class="form-group">
-                <label for="ds-name">Dataset Name</label>
-                <input type="text" id="ds-name" name="name" required placeholder="e.g. lab_bright_led">
-            </div>
-            <div class="form-group">
-                <label for="ds-desc">Description</label>
-                <input type="text" id="ds-desc" name="description" placeholder="Optional description">
-            </div>
-            <div class="form-group">
-                <label for="ds-tag">Lighting Tag</label>
-                <select id="ds-tag" name="lighting_tag">
-                    <option value="">None</option>
-                    <option value="bright">Bright</option>
-                    <option value="dim">Dim</option>
-                    <option value="glare">Glare</option>
-                    <option value="mixed">Mixed</option>
-                    <option value="outdoor">Outdoor</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">Create Dataset</button>
-        </form>
-        <div id="dataset-msg" class="form-msg"></div>
+{% block head %}
+<style>
+.upload-wrap { display: grid; gap: 16px; }
+.upload-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.upload-sub { color: var(--text-secondary); font-size: 13px; margin-top: 6px; }
+.upload-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.upload-pill { padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-input); color: var(--text-secondary); font-size: 12px; }
+.upload-main { padding: 0; overflow: hidden; }
+.upload-main-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr); }
+.upload-col { padding: 20px; }
+.upload-col-left { border-right: 1px solid var(--border); }
+.upload-title { color: var(--text-heading); font-size: 15px; margin-bottom: 4px; }
+.upload-copy { color: var(--text-secondary); font-size: 13px; margin-bottom: 14px; }
+.upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.upload-grid .wide { grid-column: 1 / -1; }
+.upload-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.upload-mode-item { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); padding: 10px; }
+.upload-mode-item.is-selected { border-color: var(--accent); background: var(--accent-subtle); }
+.upload-mode-item input { margin-right: 8px; }
+.upload-mode-name { color: var(--text-heading); font-size: 13px; font-weight: 600; }
+.upload-mode-help { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
+.upload-drop { position: relative; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,0.02); padding: 22px; text-align: center; transition: border-color 0.12s ease; }
+.upload-drop.dragover { border-color: var(--accent); }
+.upload-drop-title { color: var(--text-heading); font-size: 14px; font-weight: 600; margin-top: 10px; }
+.upload-drop-help { color: var(--text-secondary); font-size: 12px; margin-top: 6px; }
+.upload-drop-row { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.upload-drop-note { color: var(--text-muted); font-size: 11px; }
+.upload-file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload-queue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.upload-cell { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); padding: 9px; }
+.upload-cell-label { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; display: block; }
+.upload-cell-value { color: var(--text-heading); font-size: 15px; font-weight: 600; display: block; margin-top: 6px; word-break: break-word; }
+.upload-meta { color: var(--text-secondary); font-size: 12px; margin-top: 12px; }
+.upload-meta strong { display: block; color: var(--text-heading); font-size: 13px; margin-bottom: 4px; }
+.upload-files { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.upload-file-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; background: rgba(255,255,255,0.02); }
+.upload-file-name { color: var(--text-primary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upload-file-size { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.upload-empty { border: 1px dashed var(--border); border-radius: 8px; padding: 12px; color: var(--text-secondary); font-size: 12px; }
+.upload-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.upload-progress-wrap { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.upload-progress { flex: 1; height: 8px; background: var(--bg-hover); border-radius: 999px; overflow: hidden; }
+.upload-progress-fill { height: 100%; width: 0; background: var(--accent); }
+.upload-progress-status { color: var(--text-secondary); font-size: 12px; }
+.upload-results { margin-top: 12px; }
+.upload-breakdown { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.upload-breakdown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; }
+.upload-breakdown-name { color: var(--text-primary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ext-list { display: flex; flex-direction: column; gap: 10px; }
+.ext-item { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); padding: 12px; }
+.ext-head, .ext-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.ext-name { color: var(--text-heading); font-size: 14px; font-weight: 600; }
+.ext-tags, .ext-meta, .ext-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ext-notes { color: var(--text-secondary); font-size: 13px; margin-top: 6px; }
+.ext-meta { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+.ext-status { color: var(--text-secondary); font-size: 12px; font-family: var(--font-mono); }
+@media (max-width: 980px) {
+  .upload-main-grid { grid-template-columns: 1fr; }
+  .upload-col-left { border-right: none; border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 760px) {
+  .upload-header { flex-direction: column; }
+  .upload-grid, .upload-mode, .upload-queue-grid { grid-template-columns: 1fr; }
+  .upload-file-row, .upload-breakdown-row, .ext-head, .ext-foot { grid-template-columns: 1fr; flex-direction: column; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set ns = namespace(total_images=0, installable_external=0) %}
+{% for ds in datasets %}
+    {% set ns.total_images = ns.total_images + ds.image_count %}
+{% endfor %}
+{% for item in external_datasets %}
+    {% if item.install_allowed %}
+        {% set ns.installable_external = ns.installable_external + 1 %}
+    {% endif %}
+{% endfor %}
+
+<div class="upload-wrap">
+    <div class="page-header upload-header">
+        <div>
+            <h1>Upload Images</h1>
+            <div class="upload-sub">Create or update datasets, upload image batches, then move to labeling.</div>
+        </div>
+        <div class="upload-pills">
+            <span class="upload-pill">{{ datasets|length }} datasets</span>
+            <span class="upload-pill">{{ ns.total_images }} images</span>
+            <span class="upload-pill">{{ ns.installable_external }} external sources ready</span>
+        </div>
     </div>
 
-    <div class="card">
-        <h2>Upload Images</h2>
-        <form id="upload-form" class="form-stack">
-            <div class="form-group">
-                <label for="upload-dataset">Dataset</label>
-                <select id="upload-dataset" name="dataset_id" required>
-                    <option value="">Select dataset...</option>
-                    {% for ds in datasets %}
-                    <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.image_count }} imgs)</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Images</label>
-                <div id="drop-zone" class="drop-zone">
-                    <p><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Drag & drop images here, or click to browse</p>
-                    <input type="file" id="file-input" name="files" multiple accept="image/*" class="file-input">
+    <div class="card upload-main">
+        <form id="upload-form" class="upload-main-grid">
+            <div class="upload-col upload-col-left">
+                <h2 class="upload-title">Batch Setup</h2>
+                <div class="upload-copy">Select target dataset, display type, and files.</div>
+
+                <div class="upload-grid">
+                    <div class="form-group wide">
+                        <label>Dataset Target</label>
+                        <div class="upload-mode">
+                            <label class="upload-mode-item is-selected" data-mode="new" for="dataset-mode-new">
+                                <input type="radio" id="dataset-mode-new" name="dataset_mode" value="new" checked>
+                                <span class="upload-mode-name">Create new dataset</span>
+                                <span class="upload-mode-help">Provide name and optional metadata.</span>
+                            </label>
+                            <label class="upload-mode-item" data-mode="existing" for="dataset-mode-existing">
+                                <input type="radio" id="dataset-mode-existing" name="dataset_mode" value="existing">
+                                <span class="upload-mode-name">Use existing dataset</span>
+                                <span class="upload-mode-help">Append images to an existing dataset.</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="new-dataset-fields">
+                        <div class="form-group">
+                            <label for="ds-name">Dataset Name</label>
+                            <input type="text" id="ds-name" name="name" placeholder="e.g. lab_bright_led">
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-desc">Description</label>
+                            <input type="text" id="ds-desc" name="description" placeholder="Optional description">
+                        </div>
+                        <div class="form-group wide">
+                            <label for="ds-tag">Lighting Tag</label>
+                            <select id="ds-tag" name="lighting_tag">
+                                <option value="">None</option>
+                                <option value="bright">Bright</option>
+                                <option value="dim">Dim</option>
+                                <option value="glare">Glare</option>
+                                <option value="mixed">Mixed</option>
+                                <option value="outdoor">Outdoor</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="existing-dataset-fields" style="display:none">
+                        <div class="form-group wide">
+                            <label for="upload-dataset">Existing Dataset</label>
+                            <select id="upload-dataset" name="dataset_id">
+                                <option value="">Select dataset...</option>
+                                {% for ds in datasets %}
+                                <option value="{{ ds.id }}">{{ ds.name }} ({{ ds.image_count }} imgs)</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group wide">
+                        <label for="upload-display-type">Default Display Type</label>
+                        <select id="upload-display-type" name="display_type" required>
+                            <option value="">Select display type...</option>
+                            <option value="lcd">LCD</option>
+                            <option value="led">LED</option>
+                        </select>
+                        <small class="form-help">Used for draft annotations and manifest output.</small>
+                    </div>
+
+                    <div class="form-group wide">
+                        <label>Images</label>
+                        <div id="drop-zone" class="upload-drop" tabindex="0" role="button" aria-label="Select images for upload">
+                            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="16 16 12 12 8 16"></polyline>
+                                <line x1="12" y1="12" x2="12" y2="21"></line>
+                                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                            </svg>
+                            <div class="upload-drop-title">Drop files here or click to browse</div>
+                            <div class="upload-drop-help">PNG and JPG supported. Reopen picker to add more files.</div>
+                            <div class="upload-drop-row">
+                                <button type="button" class="btn btn-sm" id="browse-files-btn">Browse Files</button>
+                                <span class="upload-drop-note">Large batches are uploaded in request chunks.</span>
+                            </div>
+                            <input type="file" id="file-input" name="files" multiple accept="image/*" class="upload-file-input">
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div id="file-list" class="file-list"></div>
-            <button type="submit" class="btn btn-primary" id="upload-btn" disabled>Upload</button>
+
+            <div class="upload-col">
+                <h2 class="upload-title">Queue</h2>
+                <div class="upload-copy">Review files and upload status.</div>
+
+                <div class="upload-queue-grid">
+                    <div class="upload-cell">
+                        <span class="upload-cell-label">Images</span>
+                        <span class="upload-cell-value" id="queue-count">0</span>
+                    </div>
+                    <div class="upload-cell">
+                        <span class="upload-cell-label">Total Size</span>
+                        <span class="upload-cell-value" id="queue-size">0 KB</span>
+                    </div>
+                    <div class="upload-cell">
+                        <span class="upload-cell-label">Target</span>
+                        <span class="upload-cell-value" id="queue-target">New dataset</span>
+                    </div>
+                    <div class="upload-cell">
+                        <span class="upload-cell-label">Upload Requests</span>
+                        <span class="upload-cell-value" id="queue-chunks">0</span>
+                    </div>
+                </div>
+
+                <div id="selection-meta" class="upload-meta">
+                    <strong>No images selected.</strong>
+                    <span>Add one or more files to begin.</span>
+                </div>
+
+                <div id="file-list" class="upload-files"></div>
+
+                <div class="upload-actions">
+                    <button type="submit" class="btn btn-primary" id="upload-btn" disabled>Upload</button>
+                    <button type="button" class="btn btn-sm btn-ghost" id="clear-files-btn" style="display:none">Clear Queue</button>
+                </div>
+
+                <div id="upload-progress-wrap" class="upload-progress-wrap" style="display:none">
+                    <div class="upload-progress"><div class="upload-progress-fill" id="upload-fill"></div></div>
+                    <span class="upload-progress-status" id="upload-status"></span>
+                </div>
+
+                <div id="upload-results" class="upload-results"></div>
+            </div>
         </form>
-        <div id="upload-progress" class="progress-bar-container" style="display:none">
-            <div class="progress-bar"><div class="progress-fill" id="upload-fill"></div></div>
-            <span id="upload-status"></span>
-        </div>
-        <div id="upload-results"></div>
     </div>
 
-    <div class="card external-datasets-card">
-        <h2>Curated External Datasets</h2>
-        <p class="card-subtext">
-            Quick Add installs a starter pack. Full Add installs everything available.
-        </p>
-        <div id="external-dataset-list" class="external-dataset-list">
+    <div class="card">
+        <h2 class="upload-title">Curated External Datasets</h2>
+        <div class="upload-copy">Quick Add installs a starter subset. Full Add installs complete source when available.</div>
+
+        <div id="external-dataset-list" class="ext-list">
             {% for item in external_datasets %}
             {% set blocked = not item.install_allowed %}
             {% set full_disabled = blocked or not item.supports_full %}
-            <div class="external-dataset-item" data-dataset-key="{{ item.key }}">
-                <div class="external-dataset-header">
-                    <div class="external-dataset-name">{{ item.name }}</div>
-                    <div class="external-dataset-tags">
+            <div class="ext-item" data-dataset-key="{{ item.key }}">
+                <div class="ext-head">
+                    <div class="ext-name">{{ item.name }}</div>
+                    <div class="ext-tags">
                         <span class="tag">{{ item.license }}</span>
                         <span class="tag">{{ item.access }}</span>
                     </div>
                 </div>
-                <div class="external-dataset-notes">{{ item.notes }}</div>
-                <div class="external-dataset-meta">
+                <div class="ext-notes">{{ item.notes }}</div>
+                <div class="ext-meta">
                     <span>Quick: {{ item.quick_count }} samples</span>
                     <span>Raw cache: <code>{{ item.raw_cache_dir }}</code></span>
                 </div>
-                <div class="external-dataset-footer">
-                    <div class="external-status" id="status-{{ item.key }}">
+                <div class="ext-foot">
+                    <div class="ext-status" id="status-{{ item.key }}">
                         {% if blocked %}
                         {{ item.install_reason }}
                         {% elif item.installed_raw %}
@@ -94,14 +256,10 @@
                         Ready
                         {% endif %}
                     </div>
-                    <div class="external-dataset-actions">
+                    <div class="ext-actions">
                         <a class="btn btn-sm" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">Open Source</a>
-                        <button type="button" class="btn btn-sm btn-primary ext-install-btn" data-mode="quick" {% if blocked %}disabled{% endif %}>
-                            Quick Add
-                        </button>
-                        <button type="button" class="btn btn-sm ext-install-btn" data-mode="full" {% if full_disabled %}disabled{% endif %}>
-                            Full Add
-                        </button>
+                        <button type="button" class="btn btn-sm btn-primary ext-install-btn" data-mode="quick" {% if blocked %}disabled{% endif %}>Quick Add</button>
+                        <button type="button" class="btn btn-sm ext-install-btn" data-mode="full" {% if full_disabled %}disabled{% endif %}>Full Add</button>
                     </div>
                 </div>
             </div>
@@ -114,115 +272,418 @@
 
 {% block scripts %}
 <script>
+const UPLOAD_CHUNK_BYTES = 18 * 1024 * 1024;
+const UPLOAD_CHUNK_FILE_LIMIT = 48;
+
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
+const browseFilesBtn = document.getElementById('browse-files-btn');
 const fileList = document.getElementById('file-list');
 const uploadBtn = document.getElementById('upload-btn');
 const uploadDataset = document.getElementById('upload-dataset');
+const uploadDisplayType = document.getElementById('upload-display-type');
 const uploadResults = document.getElementById('upload-results');
+const selectionMeta = document.getElementById('selection-meta');
+const clearFilesBtn = document.getElementById('clear-files-btn');
+const queueCount = document.getElementById('queue-count');
+const queueSize = document.getElementById('queue-size');
+const queueTarget = document.getElementById('queue-target');
+const queueChunks = document.getElementById('queue-chunks');
+const datasetModeInputs = Array.from(document.querySelectorAll('input[name="dataset_mode"]'));
+const modeCards = Array.from(document.querySelectorAll('.upload-mode-item[data-mode]'));
+const newDatasetFields = document.getElementById('new-dataset-fields');
+const existingDatasetFields = document.getElementById('existing-dataset-fields');
+const dsNameInput = document.getElementById('ds-name');
+const dsDescInput = document.getElementById('ds-desc');
+const dsTagInput = document.getElementById('ds-tag');
+const progressWrap = document.getElementById('upload-progress-wrap');
+const uploadFill = document.getElementById('upload-fill');
+const uploadStatus = document.getElementById('upload-status');
 const externalMsg = document.getElementById('external-dataset-msg');
+
 let selectedFiles = [];
+let dragDepth = 0;
+let isUploading = false;
 const jobPollers = new Map();
 
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    handleFiles(e.dataTransfer.files);
-});
-fileInput.addEventListener('change', e => handleFiles(e.target.files));
-uploadDataset.addEventListener('change', updateUploadButtonState);
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function pluralize(count, singular) {
+    return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+function formatFileSize(bytes) {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${bytes} B`;
+}
+
+function getDatasetMode() {
+    const selected = datasetModeInputs.find((input) => input.checked);
+    return selected ? selected.value : 'new';
+}
+
+function getTargetLabel() {
+    if (getDatasetMode() === 'existing') {
+        const selectedOption = uploadDataset.options[uploadDataset.selectedIndex];
+        return selectedOption && selectedOption.value ? selectedOption.text : 'Select dataset';
+    }
+    return String(dsNameInput.value || '').trim() || 'New dataset';
+}
+function estimateChunkCount(files) {
+    if (!files.length) return 0;
+    let chunks = 1;
+    let bytesInChunk = 0;
+    let filesInChunk = 0;
+    files.forEach((file) => {
+        const splitByBytes = bytesInChunk > 0 && (bytesInChunk + file.size) > UPLOAD_CHUNK_BYTES;
+        const splitByCount = filesInChunk >= UPLOAD_CHUNK_FILE_LIMIT;
+        if (splitByBytes || splitByCount) {
+            chunks += 1;
+            bytesInChunk = 0;
+            filesInChunk = 0;
+        }
+        bytesInChunk += file.size;
+        filesInChunk += 1;
+    });
+    return chunks;
+}
+
+function buildChunks(files) {
+    const chunks = [];
+    let current = [];
+    let bytesInChunk = 0;
+    files.forEach((file) => {
+        const splitByBytes = current.length > 0 && (bytesInChunk + file.size) > UPLOAD_CHUNK_BYTES;
+        const splitByCount = current.length >= UPLOAD_CHUNK_FILE_LIMIT;
+        if (splitByBytes || splitByCount) {
+            chunks.push(current);
+            current = [];
+            bytesInChunk = 0;
+        }
+        current.push(file);
+        bytesInChunk += file.size;
+    });
+    if (current.length) chunks.push(current);
+    return chunks;
+}
+
+function setProgress(current, total, message) {
+    progressWrap.style.display = 'flex';
+    uploadFill.style.width = total > 0 ? `${Math.max(6, Math.round((current / total) * 100))}%` : '0%';
+    uploadStatus.textContent = message;
+}
+
+function resetProgress() {
+    progressWrap.style.display = 'none';
+    uploadFill.style.width = '0%';
+    uploadStatus.textContent = '';
+}
+
+function updateModeCardUI() {
+    const mode = getDatasetMode();
+    modeCards.forEach((card) => {
+        card.classList.toggle('is-selected', card.dataset.mode === mode);
+    });
+}
+
+function updateSelectionSummary() {
+    const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    const chunks = estimateChunkCount(selectedFiles);
+    queueCount.textContent = String(selectedFiles.length);
+    queueSize.textContent = formatFileSize(totalBytes);
+    queueTarget.textContent = getTargetLabel();
+    queueChunks.textContent = String(chunks);
+
+    if (!selectedFiles.length) {
+        selectionMeta.innerHTML = '<strong>No images selected.</strong><span>Add one or more files to begin.</span>';
+        clearFilesBtn.style.display = 'none';
+        return;
+    }
+
+    selectionMeta.innerHTML = `<strong>${pluralize(selectedFiles.length, 'image')} queued</strong><span>${formatFileSize(totalBytes)} total, ${pluralize(chunks, 'request')} planned.</span>`;
+    clearFilesBtn.style.display = '';
+}
+
+function renderSelectedFiles() {
+    if (!selectedFiles.length) {
+        fileList.innerHTML = '<div class="upload-empty">Queue is empty.</div>';
+        updateSelectionSummary();
+        return;
+    }
+
+    fileList.innerHTML = selectedFiles.map((file, index) => `
+        <div class="upload-file-row">
+            <span class="upload-file-name">${escapeHtml(file.name)}</span>
+            <span class="upload-file-size">${formatFileSize(file.size)}</span>
+            <button type="button" class="btn btn-sm btn-ghost file-remove-btn" data-index="${index}">Remove</button>
+        </div>
+    `).join('');
+
+    fileList.querySelectorAll('.file-remove-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const index = Number.parseInt(button.dataset.index, 10);
+            if (Number.isNaN(index)) return;
+            selectedFiles.splice(index, 1);
+            renderSelectedFiles();
+            updateUploadButtonState();
+        });
+    });
+
+    updateSelectionSummary();
+}
 
 function updateUploadButtonState() {
-    uploadBtn.disabled = selectedFiles.length === 0 || !uploadDataset.value;
+    const mode = getDatasetMode();
+    const hasTarget = mode === 'existing' ? Boolean(uploadDataset.value) : Boolean(String(dsNameInput.value || '').trim());
+    const ready = selectedFiles.length > 0 && hasTarget && Boolean(uploadDisplayType.value);
+    uploadBtn.disabled = isUploading || !ready;
+
+    if (isUploading) return;
+    if (!selectedFiles.length) uploadBtn.textContent = 'Upload';
+    else if (!hasTarget) uploadBtn.textContent = mode === 'existing' ? 'Select Dataset' : 'Enter Dataset Name';
+    else if (!uploadDisplayType.value) uploadBtn.textContent = 'Select Display Type';
+    else uploadBtn.textContent = `Upload ${pluralize(selectedFiles.length, 'Image')}`;
 }
 
-function showUploadMessage(message, type = 'error') {
-    uploadResults.innerHTML = `<div class="form-msg ${type}">${message}</div>`;
-}
-
-function handleFiles(files) {
-    selectedFiles = Array.from(files);
-    fileList.innerHTML = selectedFiles.map(f => `<div class="file-item">${f.name} (${(f.size/1024).toFixed(1)} KB)</div>`).join('');
-    uploadResults.innerHTML = '';
+function syncDatasetMode() {
+    const useExisting = getDatasetMode() === 'existing';
+    newDatasetFields.style.display = useExisting ? 'none' : '';
+    existingDatasetFields.style.display = useExisting ? '' : 'none';
+    updateModeCardUI();
+    updateSelectionSummary();
     updateUploadButtonState();
 }
 
-document.getElementById('dataset-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    const resp = await fetch('/upload/dataset', { method: 'POST', body: form });
-    const data = await resp.json();
-    const msg = document.getElementById('dataset-msg');
-    if (data.error) {
-        msg.textContent = data.error;
-        msg.className = 'form-msg error';
+function clearSelectedFiles() {
+    selectedFiles = [];
+    fileInput.value = '';
+    renderSelectedFiles();
+    updateUploadButtonState();
+}
+
+function handleFiles(files, options = {}) {
+    const incoming = Array.from(files || []);
+    if (!incoming.length) {
+        fileInput.value = '';
+        return;
+    }
+    selectedFiles = options.append === false ? incoming : selectedFiles.concat(incoming);
+    uploadResults.innerHTML = '';
+    fileInput.value = '';
+    renderSelectedFiles();
+    updateUploadButtonState();
+}
+
+function showUploadMessage(message, type = 'error') {
+    uploadResults.innerHTML = `<div class="form-msg ${type}">${escapeHtml(message)}</div>`;
+}
+
+function renderUploadBreakdown(rows) {
+    if (!rows || !rows.length) return '';
+    return `<div class="upload-breakdown">${rows.map((row) => `
+        <div class="upload-breakdown-row">
+            <span class="upload-breakdown-name">${escapeHtml(row.filename)}</span>
+            <span class="form-msg ${row.error ? 'error' : 'success'}">${escapeHtml(row.error || 'Uploaded')}</span>
+        </div>
+    `).join('')}</div>`;
+}
+
+function renderManifestDownload(manifest, filename) {
+    if (!manifest || !manifest.length) return '';
+    const encoded = encodeURIComponent(JSON.stringify(manifest, null, 2));
+    return `<div class="upload-actions"><a class="btn btn-sm" download="${escapeHtml(filename)}" href="data:application/json;charset=utf-8,${encoded}">Download JSON Manifest</a></div>`;
+}
+
+function renderLabelLink(url) {
+    if (!url) return '';
+    return `<div class="upload-actions"><a class="btn btn-sm btn-primary" href="${url}">Open Label Page</a></div>`;
+}
+
+function upsertDatasetOption(result) {
+    if (!result || !result.dataset_id || !result.dataset_name) return;
+    const existing = Array.from(uploadDataset.options).find((option) => String(option.value) === String(result.dataset_id));
+    const label = `${result.dataset_name} (${result.uploaded_images || 0} imgs)`;
+    if (existing) existing.text = label;
+    else uploadDataset.add(new Option(label, result.dataset_id));
+    uploadDataset.value = result.dataset_id;
+}
+
+function setUploadBusy(busy, chunkCount = 0) {
+    isUploading = busy;
+    [...datasetModeInputs, uploadDataset, uploadDisplayType, dsNameInput, dsDescInput, dsTagInput, fileInput, browseFilesBtn, clearFilesBtn].forEach((el) => {
+        if (el) el.disabled = busy;
+    });
+
+    if (busy) {
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = chunkCount > 1 ? `Uploading ${chunkCount} Requests...` : 'Uploading...';
     } else {
-        msg.textContent = `Created: ${data.name}`;
-        msg.className = 'form-msg success';
-        const sel = document.getElementById('upload-dataset');
-        const opt = new Option(`${data.name} (0 imgs)`, data.id);
-        sel.add(opt);
-        sel.value = data.id;
         updateUploadButtonState();
-        e.target.reset();
+        updateSelectionSummary();
+    }
+}
+
+async function submitChunkedUpload(payload) {
+    const chunks = buildChunks(selectedFiles);
+    const aggregate = { dataset: null, uploaded: [], uploaded_count: 0, failed_count: 0, manifest: [], manifest_filename: '', label_url: '' };
+    let datasetId = payload.datasetId || null;
+
+    for (let index = 0; index < chunks.length; index += 1) {
+        const form = new FormData();
+        if (datasetId) form.append('dataset_id', datasetId);
+        else {
+            form.append('name', payload.name);
+            form.append('description', payload.description);
+            form.append('lighting_tag', payload.lightingTag);
+        }
+        form.append('display_type', payload.displayType);
+        chunks[index].forEach((file) => form.append('files', file));
+
+        setProgress(index, chunks.length, `Uploading ${index + 1}/${chunks.length}`);
+        const response = await fetch('/upload/unlabeled-batch', { method: 'POST', body: form }).catch(() => null);
+        if (!response) throw new Error(`Request ${index + 1} could not reach the server.`);
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (error) {
+            throw new Error(`Request ${index + 1} returned unreadable data.`);
+        }
+        if (!response.ok || data.error) throw new Error(data.error || `Request ${index + 1} failed.`);
+
+        if (data.dataset && data.dataset.id) datasetId = data.dataset.id;
+        aggregate.dataset = data.dataset || aggregate.dataset;
+        aggregate.label_url = data.label_url || aggregate.label_url;
+        aggregate.manifest_filename = data.manifest_filename || aggregate.manifest_filename;
+        aggregate.uploaded.push(...(data.uploaded || []));
+        aggregate.uploaded_count += Number(data.uploaded_count || 0);
+        aggregate.failed_count += Number(data.failed_count || 0);
+        if (Array.isArray(data.manifest)) aggregate.manifest.push(...data.manifest);
+    }
+
+    if (aggregate.dataset) {
+        aggregate.dataset.id = datasetId || aggregate.dataset.id;
+        aggregate.dataset.created = payload.mode === 'new';
+    }
+    return aggregate;
+}
+dropZone.addEventListener('click', (event) => {
+    if (isUploading || event.target.closest('button')) return;
+    fileInput.click();
+});
+
+dropZone.addEventListener('keydown', (event) => {
+    if (isUploading) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fileInput.click();
     }
 });
 
-document.getElementById('upload-form').addEventListener('submit', async e => {
-    e.preventDefault();
+browseFilesBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!isUploading) fileInput.click();
+});
+
+dropZone.addEventListener('dragenter', (event) => {
+    event.preventDefault();
+    dragDepth += 1;
+    dropZone.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    dropZone.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragleave', (event) => {
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropZone.classList.remove('dragover');
+});
+
+dropZone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dragDepth = 0;
+    dropZone.classList.remove('dragover');
+    handleFiles(event.dataTransfer.files, { append: true });
+});
+
+fileInput.addEventListener('change', (event) => handleFiles(event.target.files, { append: true }));
+uploadDataset.addEventListener('change', () => { updateSelectionSummary(); updateUploadButtonState(); });
+uploadDisplayType.addEventListener('change', () => updateUploadButtonState());
+dsNameInput.addEventListener('input', () => { updateSelectionSummary(); updateUploadButtonState(); });
+datasetModeInputs.forEach((input) => input.addEventListener('change', syncDatasetMode));
+clearFilesBtn.addEventListener('click', clearSelectedFiles);
+
+document.getElementById('upload-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const mode = getDatasetMode();
+    const datasetName = String(dsNameInput.value || '').trim();
     const datasetId = uploadDataset.value;
-    if (!datasetId) {
-        showUploadMessage('Select a dataset before uploading.', 'error');
-        uploadDataset.focus();
-        return;
-    }
-    if (selectedFiles.length === 0) {
-        showUploadMessage('Add at least one image before uploading.', 'error');
-        return;
-    }
 
-    const form = new FormData();
-    form.append('dataset_id', datasetId);
-    selectedFiles.forEach(f => form.append('files', f));
+    if (mode === 'existing' && !datasetId) return showUploadMessage('Select an existing dataset.');
+    if (mode === 'new' && !datasetName) return showUploadMessage('Enter a dataset name.');
+    if (!selectedFiles.length) return showUploadMessage('Add at least one image.');
+    if (!uploadDisplayType.value) return showUploadMessage('Select a display type.');
 
-    const prog = document.getElementById('upload-progress');
-    prog.style.display = 'block';
-    document.getElementById('upload-status').textContent = 'Uploading...';
+    setUploadBusy(true, estimateChunkCount(selectedFiles));
+    uploadResults.innerHTML = '';
 
-    let uploadOk = false;
     try {
-        const resp = await fetch('/upload/images', { method: 'POST', body: form });
-        const data = await resp.json();
-        if (!resp.ok || data.error) {
-            showUploadMessage(data.error || 'Upload failed.', 'error');
-            return;
-        }
+        const result = await submitChunkedUpload({
+            mode,
+            datasetId: mode === 'existing' ? datasetId : null,
+            name: datasetName,
+            description: dsDescInput.value,
+            lightingTag: dsTagInput.value,
+            displayType: uploadDisplayType.value,
+        });
 
-        if (data.uploaded) {
-            const ok = data.uploaded.filter(r => !r.error).length;
-            const fail = data.uploaded.filter(r => r.error).length;
-            if (ok > 0) {
-                showUploadMessage(`${ok} uploaded${fail ? `, ${fail} failed` : ''}`, fail ? 'warning' : 'success');
-                uploadOk = true;
-            } else {
-                showUploadMessage(`Upload failed for ${fail} file(s).`, 'error');
-            }
+        const okCount = result.uploaded.filter((row) => !row.error).length;
+        const failCount = result.uploaded.filter((row) => row.error).length;
+
+        if (okCount > 0) {
+            const dataset = result.dataset || {};
+            const modeText = dataset.created ? 'Created dataset' : 'Updated dataset';
+            uploadResults.innerHTML = `
+                <div class="form-msg ${failCount ? 'warning' : 'success'}">${modeText}: <strong>${escapeHtml(dataset.name || 'dataset')}</strong>. ${okCount} uploaded${failCount ? `, ${failCount} failed` : ''}.</div>
+                ${renderLabelLink(result.label_url)}
+                ${renderManifestDownload(result.manifest, result.manifest_filename)}
+                ${renderUploadBreakdown(result.uploaded)}
+            `;
+
+            upsertDatasetOption({
+                dataset_id: dataset.id,
+                dataset_name: dataset.name,
+                uploaded_images: dataset.image_count,
+            });
+
+            clearSelectedFiles();
+            uploadDisplayType.value = '';
+            dsNameInput.value = '';
+            dsDescInput.value = '';
+            dsTagInput.value = '';
+            datasetModeInputs.forEach((input) => { input.checked = input.value === 'existing'; });
+            syncDatasetMode();
         } else {
-            showUploadMessage('Upload failed: invalid server response.', 'error');
+            uploadResults.innerHTML = `<div class="form-msg error">Upload failed for ${failCount} file(s).</div>${renderUploadBreakdown(result.uploaded)}`;
         }
-    } catch (err) {
-        showUploadMessage('Upload request failed. Check connection and try again.', 'error');
+    } catch (error) {
+        showUploadMessage(error.message || 'Upload request failed.');
     } finally {
-        prog.style.display = 'none';
-    }
-
-    if (uploadOk) {
-        selectedFiles = [];
-        fileList.innerHTML = '';
-        updateUploadButtonState();
+        setUploadBusy(false);
+        resetProgress();
     }
 });
 
@@ -233,24 +694,11 @@ function showExternalMessage(message, type = 'success') {
 }
 
 function setDatasetActionState(datasetKey, disabled) {
-    const row = document.querySelector(`.external-dataset-item[data-dataset-key="${datasetKey}"]`);
+    const row = document.querySelector(`.ext-item[data-dataset-key="${datasetKey}"]`);
     if (!row) return;
-    row.querySelectorAll('.ext-install-btn').forEach(btn => {
-        btn.disabled = disabled;
+    row.querySelectorAll('.ext-install-btn').forEach((button) => {
+        button.disabled = disabled;
     });
-}
-
-function upsertDatasetOption(result) {
-    if (!result || !result.dataset_id || !result.dataset_name) return;
-    const select = document.getElementById('upload-dataset');
-    const existing = Array.from(select.options).find(opt => String(opt.value) === String(result.dataset_id));
-    const label = `${result.dataset_name} (${result.uploaded_images || 0} imgs)`;
-    if (existing) {
-        existing.text = label;
-    } else {
-        select.add(new Option(label, result.dataset_id));
-    }
-    select.value = result.dataset_id;
 }
 
 function startPollingInstall(datasetKey, jobId) {
@@ -259,15 +707,16 @@ function startPollingInstall(datasetKey, jobId) {
 
     const poller = setInterval(async () => {
         try {
-            const resp = await fetch(`/upload/external-datasets/status/${jobId}`);
-            if (!resp.ok) {
+            const response = await fetch(`/upload/external-datasets/status/${jobId}`);
+            if (!response.ok) {
                 clearInterval(poller);
                 setDatasetActionState(datasetKey, false);
                 statusEl.textContent = 'Status unavailable';
                 showExternalMessage('Install status endpoint failed.', 'error');
                 return;
             }
-            const data = await resp.json();
+
+            const data = await response.json();
             const countText = data.total > 0 ? ` (${data.processed}/${data.total})` : '';
             statusEl.textContent = `${data.message}${countText}`;
 
@@ -284,7 +733,7 @@ function startPollingInstall(datasetKey, jobId) {
                 statusEl.textContent = 'Failed';
                 showExternalMessage(data.error || 'Dataset install failed.', 'error');
             }
-        } catch (err) {
+        } catch (error) {
             clearInterval(poller);
             setDatasetActionState(datasetKey, false);
             statusEl.textContent = 'Failed';
@@ -295,38 +744,44 @@ function startPollingInstall(datasetKey, jobId) {
     jobPollers.set(jobId, poller);
 }
 
-document.querySelectorAll('.ext-install-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
-        const row = e.target.closest('.external-dataset-item');
+document.querySelectorAll('.ext-install-btn').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+        const row = event.target.closest('.ext-item');
         if (!row) return;
+
         const datasetKey = row.dataset.datasetKey;
-        const mode = e.target.dataset.mode;
+        const mode = event.target.dataset.mode;
         const statusEl = document.getElementById(`status-${datasetKey}`);
 
         setDatasetActionState(datasetKey, true);
         statusEl.textContent = 'Starting install...';
 
         try {
-            const resp = await fetch('/upload/external-datasets/install', {
+            const response = await fetch('/upload/external-datasets/install', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dataset_key: datasetKey, mode }),
             });
-            const data = await resp.json();
-            if (!resp.ok || data.error) {
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
                 setDatasetActionState(datasetKey, false);
                 statusEl.textContent = 'Install blocked';
                 showExternalMessage(data.error || 'Unable to start install.', 'error');
                 return;
             }
+
             statusEl.textContent = `Running ${mode} install...`;
             startPollingInstall(datasetKey, data.job_id);
-        } catch (err) {
+        } catch (error) {
             setDatasetActionState(datasetKey, false);
             statusEl.textContent = 'Failed';
             showExternalMessage('Could not start dataset install.', 'error');
         }
     });
 });
+
+syncDatasetMode();
+renderSelectedFiles();
 </script>
 {% endblock %}
