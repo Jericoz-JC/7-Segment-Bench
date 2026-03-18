@@ -545,6 +545,9 @@ input:focus, select:focus, textarea:focus {
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
+    background:
+        radial-gradient(circle at top, rgba(216, 79, 122, 0.12), transparent 48%),
+        linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
 }
 
 .drop-zone p {
@@ -556,6 +559,12 @@ input:focus, select:focus, textarea:focus {
 
 .drop-zone svg { opacity: 0.5; }
 
+.drop-zone-hint {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 .drop-zone:hover, .drop-zone.dragover {
     border-color: var(--accent);
     background-color: var(--accent-subtle);
@@ -565,7 +574,27 @@ input:focus, select:focus, textarea:focus {
 
 .file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
-.file-list { display: flex; flex-direction: column; gap: 4px; }
+.selection-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.selection-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
 .file-item {
     font-size: 13px;
     color: var(--text-secondary);
@@ -573,6 +602,43 @@ input:focus, select:focus, textarea:focus {
     background: var(--bg-input);
     border-radius: 6px;
     font-family: var(--font-mono);
+}
+
+.file-item-rich {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.04);
+}
+
+.file-item-main {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    overflow: hidden;
+}
+
+.file-item-name {
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-item-size {
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.upload-manifest-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
 }
 
 /* === Progress Bar === */

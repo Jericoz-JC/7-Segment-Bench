@@ -28,6 +28,7 @@
     let startX = 0;
     let startY = 0;
     let existingLabels = [];
+    let currentDraft = null;
 
     function sanitizeRaw(value) {
         return String(value || '')
@@ -193,6 +194,7 @@
         const allowSuggest = opts.allowSuggest !== false;
         const resp = await fetch(`/label/image/${imageId}/labels`);
         existingLabels = await resp.json();
+        currentDraft = null;
 
         updateLabelInfo();
 
@@ -215,6 +217,23 @@
             gtInput.value = '';
             setBenchmarkPreview('');
             setThumbStatus(imageId, 'unlabeled');
+            try {
+                const draftResp = await fetch(`/label/image/${imageId}/draft`);
+                currentDraft = await draftResp.json();
+            } catch (err) {
+                currentDraft = null;
+            }
+            if (currentDraft) {
+                roi = {
+                    x: currentDraft.roi_x,
+                    y: currentDraft.roi_y,
+                    width: currentDraft.roi_width,
+                    height: currentDraft.roi_height,
+                };
+                displayType.value = currentDraft.display_type || 'led';
+            } else {
+                displayType.value = 'led';
+            }
             if (allowSuggest && autoSuggestToggle && autoSuggestToggle.checked) {
                 await requestSuggestion();
             }

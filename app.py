@@ -3,12 +3,14 @@
 import os
 from flask import Flask, send_from_directory
 from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
 from config import config_map
 
 REQUIRED_TABLES = {
     'datasets',
     'images',
     'labels',
+    'draft_annotations',
     'benchmark_runs',
     'benchmark_results',
     'api_keys',
@@ -32,13 +34,23 @@ def _ensure_schema(db) -> bool:
     import models.dataset  # noqa: F401
     import models.image  # noqa: F401
     import models.label  # noqa: F401
+    import models.draft_annotation  # noqa: F401
     import models.benchmark  # noqa: F401
 
-    db.create_all()
+    def _create_all_safely():
+        try:
+            db.create_all()
+        except OperationalError as exc:
+            # Flask's debug reloader can race parent/child startup against SQLite.
+            # If another process created the table moments earlier, continue.
+            if 'already exists' not in str(exc).lower():
+                raise
+
+    _create_all_safely()
     existing = set(inspect(db.engine).get_table_names())
     missing = REQUIRED_TABLES - existing
     if missing:
-        db.create_all()
+        _create_all_safely()
         existing = set(inspect(db.engine).get_table_names())
         missing = REQUIRED_TABLES - existing
     return not missing

@@ -1,7 +1,12 @@
-from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import Blueprint, render_template, request, jsonify, current_app, url_for
 from models import db
 from models.dataset import Dataset
 from services.image_service import save_uploaded_image
+from services.draft_annotation_service import (
+    normalize_display_type,
+    serialize_manifest_entry,
+    upsert_draft_annotation,
+)
 from services.external_dataset_catalog import catalog_payload
 from services.external_dataset_installer import (
     ExternalDatasetValidationError,
@@ -11,6 +16,29 @@ from services.external_dataset_jobs import ExternalDatasetInstallManager
 
 bp = Blueprint('upload', __name__)
 _install_manager = ExternalDatasetInstallManager()
+
+
+def _resolve_dataset_from_request():
+    dataset_id = request.form.get('dataset_id', type=int)
+    raw_name = str(request.form.get('name', '') or '').strip()
+
+    if dataset_id and raw_name:
+        raise ValueError('Choose an existing dataset or enter a new dataset name, not both')
+    if dataset_id:
+        return Dataset.query.get_or_404(dataset_id), False
+    if not raw_name:
+        raise ValueError('Select an existing dataset or enter a new dataset name')
+    if Dataset.query.filter_by(name=raw_name).first():
+        raise ValueError('Dataset already exists')
+
+    dataset = Dataset(
+        name=raw_name,
+        description=request.form.get('description', ''),
+        lighting_tag=request.form.get('lighting_tag', ''),
+    )
+    db.session.add(dataset)
+    db.session.commit()
+    return dataset, True
 
 
 @bp.route('/')
@@ -67,6 +95,64 @@ def upload_images():
         'uploaded': results,
         'uploaded_count': uploaded_count,
         'failed_count': failed_count,
+    })
+
+
+@bp.route('/unlabeled-batch', methods=['POST'])
+def upload_unlabeled_batch():
+    try:
+        dataset, created_dataset = _resolve_dataset_from_request()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    raw_display_type = request.form.get('display_type', '')
+    if not str(raw_display_type or '').strip():
+        return jsonify({'error': 'display_type must be either led or lcd'}), 400
+    try:
+        display_type = normalize_display_type(raw_display_type)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files uploaded'}), 400
+
+    allowed = current_app.config['ALLOWED_EXTENSIONS']
+    results = []
+    manifest = []
+
+    for f in files:
+        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+        if ext not in allowed:
+            shown_ext = f'.{ext}' if ext else '(missing extension)'
+            results.append({'filename': f.filename, 'error': f'Unsupported file type: {shown_ext}'})
+            continue
+        try:
+            img_record = save_uploaded_image(f, dataset)
+            draft = upsert_draft_annotation(img_record, display_type)
+            results.append({'filename': img_record.filename, 'id': img_record.id})
+            manifest.append(serialize_manifest_entry(img_record, draft))
+        except Exception as e:
+            results.append({'filename': f.filename, 'error': str(e)})
+
+    uploaded_count = sum(1 for item in results if not item.get('error'))
+    failed_count = len(results) - uploaded_count
+    manifest_filename = f'{dataset.name}_unlabeled_manifest.json'
+
+    return jsonify({
+        'dataset': {
+            'id': dataset.id,
+            'name': dataset.name,
+            'image_count': dataset.image_count,
+            'created': created_dataset,
+        },
+        'uploaded': results,
+        'uploaded_count': uploaded_count,
+        'failed_count': failed_count,
+        'display_type': display_type,
+        'manifest': manifest,
+        'manifest_filename': manifest_filename,
+        'label_url': url_for('label.label_dataset', dataset_id=dataset.id),
     })
 
 

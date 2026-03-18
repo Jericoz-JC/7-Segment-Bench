@@ -3,10 +3,12 @@ from flask import Blueprint, render_template, request, jsonify
 import pipelines
 from models import db
 from models.dataset import Dataset
+from models.draft_annotation import DraftAnnotation
 from models.image import Image
 from models.label import Label
 from pipelines.base import ROI
 from services.image_service import get_image_path
+from services.draft_annotation_service import serialize_draft_annotation
 from services.label_service import (
     benchmark_target,
     import_labels_csv,
@@ -170,6 +172,13 @@ def get_labels(image_id):
         'verified': str(l.labeled_by or '').lower() == 'manual',
         'updated_at': l.updated_at.isoformat() if l.updated_at else None,
     } for l in labels])
+
+
+@bp.route('/image/<int:image_id>/draft')
+def get_draft(image_id):
+    Image.query.get_or_404(image_id)
+    draft = DraftAnnotation.query.filter_by(image_id=image_id).first()
+    return jsonify(serialize_draft_annotation(draft))
 
 
 @bp.route('/suggest', methods=['POST'])
